@@ -95,6 +95,7 @@ never touches the core.
 ## Todos
 - [x] Initial implementation core and emission
 - [x] Simulator app to try distile
+- [ ] Check Java 25 requirement
 - [ ] Log adapter for Log4j
 - [ ] Parameter extraction
 - [ ] Template persistence
