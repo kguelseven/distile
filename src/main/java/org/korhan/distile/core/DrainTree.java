@@ -162,14 +162,38 @@ public final class DrainTree {
      * this never mutates tree state. Allowed to scan all clusters — it is a
      * reporting path, not the per-line hot path.
      */
-    public synchronized List<LogCluster> snapshotTopN(int n) {
-        List<LogCluster> copy = new ArrayList<>(allClusters);
-        copy.sort(Comparator.comparingLong(LogCluster::count).reversed()
-                .thenComparingLong(LogCluster::clusterId));
-        if (n >= 0 && n < copy.size()) {
-            return new ArrayList<>(copy.subList(0, n));
+    public List<LogCluster> snapshotTopN(int n) {
+        // Under the lock, capture each cluster together with its count AT THIS
+        // INSTANT — an O(T) copy, the "brief snapshot copy" the class contract
+        // promises. Two reasons the count is captured here, not read during the
+        // sort:
+        //   1. The O(T log T) sort must NOT hold the lock. For a long-running
+        //      process with many templates, sorting under the lock stalls the
+        //      ingest thread on every snapshot interval.
+        //   2. Sorting on live count() while the ingest thread mutates it would
+        //      feed TimSort an ordering that changes mid-sort, which it detects
+        //      and rejects with IllegalArgumentException. Sorting on the captured
+        //      snapshot value keeps the comparator stable.
+        List<Ranked> ranked;
+        synchronized (this) {
+            ranked = new ArrayList<>(allClusters.size());
+            for (LogCluster c : allClusters) {
+                ranked.add(new Ranked(c, c.count()));
+            }
         }
-        return copy;
+        ranked.sort(Comparator.comparingLong((Ranked r) -> r.count).reversed()
+                .thenComparingLong(r -> r.cluster.clusterId()));
+
+        int limit = (n >= 0 && n < ranked.size()) ? n : ranked.size();
+        List<LogCluster> out = new ArrayList<>(limit);
+        for (int i = 0; i < limit; i++) {
+            out.add(ranked.get(i).cluster);
+        }
+        return out;
+    }
+
+    /** A cluster paired with its count captured at snapshot time (see snapshotTopN). */
+    private record Ranked(LogCluster cluster, long count) {
     }
 
     /** Total number of distinct templates learned so far. */
