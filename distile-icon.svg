@@ -1,0 +1,24 @@
+<svg width="128" height="128" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="distileFunnel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2DD4BF"/>
+      <stop offset="1" stop-color="#0891B2"/>
+    </linearGradient>
+  </defs>
+
+  <!-- noisy raw log lines (the input: chaotic, uneven) -->
+  <g stroke="#94A3B8" stroke-width="3" stroke-linecap="round">
+    <line x1="16" y1="9"  x2="40" y2="9"/>
+    <line x1="20" y1="15" x2="48" y2="15"/>
+    <line x1="14" y1="21" x2="36" y2="21"/>
+  </g>
+
+  <!-- funnel: many in, one out -->
+  <path d="M13,26 L51,26 L36,44 L36,50 L28,50 L28,44 Z"
+        fill="url(#distileFunnel)"/>
+
+  <!-- distilled drop (the essence: one clean template) -->
+  <path d="M32,53 C32.9,55.3 35,56.9 35,58.9 C35,60.8 33.7,62 32,62
+           C30.3,62 29,60.8 29,58.9 C29,56.9 31.1,55.3 32,53 Z"
+        fill="#0891B2"/>
+</svg>

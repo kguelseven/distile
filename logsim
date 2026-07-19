@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Thin launcher for the log simulator so usage reads `logsim --rate 30`.
+# Runs the single source file via Java's source-launch (no build needed).
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+
+exec java "$DIR/src/test/java/org/korhan/distile/demo/LogSimulator.java" "$@"

@@ -1,0 +1,67 @@
+package org.korhan.distile.emission;
+
+import org.korhan.distile.core.DrainTree;
+import org.korhan.distile.core.LogCluster;
+import org.korhan.distile.report.Reporter;
+
+import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Emits a Top-N snapshot on a fixed timer, decoupled from the ingest loop.
+ *
+ * <p>Runs on its own daemon thread and only ever <em>reads</em> a copied, sorted
+ * view via {@link DrainTree#snapshotTopN(int)} — it must not block or slow
+ * ingestion beyond the brief lock that copy takes. This answers "what dominates
+ * right now" as a point-in-time view, independent of new-template events.
+ */
+public final class SnapshotScheduler implements AutoCloseable {
+
+    private final DrainTree tree;
+    private final Reporter reporter;
+    private final int topN;
+    private final long intervalSeconds;
+    private ScheduledExecutorService executor;
+
+    public SnapshotScheduler(DrainTree tree, Reporter reporter, int topN, long intervalSeconds) {
+        this.tree = tree;
+        this.reporter = reporter;
+        this.topN = topN;
+        this.intervalSeconds = intervalSeconds;
+    }
+
+    /** Start the timer. A non-positive interval disables snapshots entirely. */
+    public void start() {
+        if (intervalSeconds <= 0) {
+            return;
+        }
+        executor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "distile-snapshot");
+            t.setDaemon(true); // never keep the JVM alive for a snapshot timer
+            return t;
+        });
+        executor.scheduleAtFixedRate(this::tick, intervalSeconds, intervalSeconds, TimeUnit.SECONDS);
+    }
+
+    private void tick() {
+        // Swallow throwables: a formatting hiccup must never kill the timer or
+        // propagate into ingestion.
+        try {
+            List<LogCluster> top = tree.snapshotTopN(topN);
+            if (!top.isEmpty()) {
+                reporter.emit(new EmissionEvent.Snapshot(top, tree.clusterCount()));
+            }
+        } catch (RuntimeException ignored) {
+            // intentionally ignored — best-effort periodic view
+        }
+    }
+
+    @Override
+    public void close() {
+        if (executor != null) {
+            executor.shutdownNow();
+        }
+    }
+}
