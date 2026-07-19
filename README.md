@@ -2,14 +2,14 @@
 
 **Streaming log-template extractor. Distils noisy logs into frequency-ranked patterns, locally.**
 
-A from-scratch Java implementation of the [Drain](https://pinjiahe.github.io/papers/ICWS17.pdf)
+A from-scratch Java implementation of the [Drain](https://ieeexplore.ieee.org/document/8029742)
 algorithm. Point it at a log stream and it collapses thousands of noisy lines
 into a small, readable set of **templates** (the constant skeleton of a message,
 with variable parts replaced by `<*>`), ranked by frequency, with an outlier
 view.
 
 ```
-tail -f app.log | distile
+tail -f app.log | ./distile
 ```
 
 ```
