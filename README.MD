@@ -22,13 +22,6 @@ tail -f app.log | ./distile
       54  #5  <*> ERROR [main] http request <*> failed status <*>
 ```
 
-## Todos
-- [x] Initial implementation core and emission
-- [x] Simulator app to try distile
-- [ ] Log adapter for Log4j
-- [ ] Parameter extraction
-- [ ] Template persistence
-
 ## Quick start
 
 Requires **Java 25** and **Maven**.
@@ -97,6 +90,15 @@ I/O-free core (`core/`) usable as a library; emission (`emission/`) decides
 *when* to surface a template and only reads core state; formatting lives in
 `report/`; adapters (stdin/file/tail) live in `cli/`. Adding a new input mode
 never touches the core.
+
+
+## Todos
+- [x] Initial implementation core and emission
+- [x] Simulator app to try distile
+- [ ] Log adapter for Log4j
+- [ ] Parameter extraction
+- [ ] Template persistence
+
 
 ## License
 
