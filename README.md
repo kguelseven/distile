@@ -17,9 +17,10 @@ that matter drown in the noise. distile groups lines of the same shape
 into one **template** (the fixed part of the message) with the changing
 parts replaced by `<*>` and counts each one:
 
-     288  #10  <*> ERROR <*> --- [http-nio-<*>-exec-<*>] c.e.demo.GlobalExceptionHandler : Unhandled exception handling request <*>
-     616  #3  <*> INFO <*> --- [http-nio-<*>-exec-<*>] c.e.demo.OrderController : Created order <*> for customer <*>
+    [SNAPSHOT  2026-07-19T10:02:14.318]  top 10 of 14 templates
     1019  #2  <*> DEBUG <*> --- [HikariPool-<*>-housekeeper] com.zaxxer.hikari.pool.HikariPool : HikariPool-<*> - Pool stats (total=<*>, active=<*>, idle=<*>, waiting=<*>)
+     616  #3  <*> INFO <*> --- [http-nio-<*>-exec-<*>] c.e.demo.OrderController : Created order <*> for customer <*>
+     288  #10  <*> ERROR <*> --- [http-nio-<*>-exec-<*>] c.e.demo.GlobalExceptionHandler : Unhandled exception handling request <*>
 
 So instead of hundreds of near-identical lines, you see the handful of
 things your app is really doing, each with a count, and the rare error
@@ -30,9 +31,8 @@ It runs locally on a live stream:
     tail -f app.log | ./distile
 
 Under the hood, distile is a from-scratch Java implementation of the
-[Drain](https://ieeexplore.ieee.org/document/8029742) algorithm — a
-streaming log-template extractor. Everything stays on your machine and in
-memory (just the templates and their counts); no server, no database.
+[Drain](https://ieeexplore.ieee.org/document/8029742) algorithm — a streaming log-template extractor. Everything stays on your machine and in
+memory (just the templates and their counts).
 
 ## Quick start
 
@@ -72,24 +72,24 @@ full ranked list plus outliers.
 Every line runs the same near-O(1) pipeline: **tokenize → mask → tree descent →
 match → count++**.
 
-- **Mask first.** Variable tokens (timestamps, IPs, UUIDs, hex, numbers) are
-  replaced with `<*>` *before* the tree — this is what stops each unique
+- Mask first: Variable tokens (timestamps, IPs, UUIDs, hex, numbers) are
+  replaced with `<*>` *before* the tree. This is what stops each unique
   timestamp spawning its own branch.
-- **Fixed-depth tree.** Lines are bucketed by token count, then by their leading
+- Fixed-depth tree: Lines are bucketed by token count, then by their leading
   tokens, down to a leaf holding a handful of candidate templates. Matching only
   ever compares within one leaf, never globally.
-- **Merge to wildcard.** A matching line generalises any disagreeing position to
+- Merge to wildcard: A matching line generalises any disagreeing position to
   `<*>`; templates only lose specificity. Memory is bounded by template count,
   not line count.
 
 > **Note:** variables in *leading* (tree-routing) tokens split into separate
-> templates unless masked — an inherent Drain trait. Try `--depth 3` to merge
+> templates unless masked, an inherent Drain trait. Try `--depth 3` to merge
 > more aggressively.
 
 ## Try it
 
-A built-in generator emits fake **Spring Boot 3** console logs — Spring MVC, Hibernate,
-HikariCP, Tomcat — to exercise distile live:
+A built-in generator emits fake **Spring Boot 3** console logs: Spring MVC, Hibernate,
+HikariCP, Tomcat to exercise distile live:
 
 ```bash
 ./logsim --rate 40 | ./distile --snapshot-interval 3 --depth 9
@@ -105,10 +105,11 @@ Raw lines look like a real app's console:
 …and distile collapses thousands of them into the handful of patterns actually happening:
 
 ```
-<*> DEBUG <*> --- [http-nio-<*>-exec-<*>] org.hibernate.SQL : select o1_<*>.id,o1_<*>.total,o1_<*>.status from orders o1_<*> where o1_<*>.id=?
-<*> DEBUG <*> --- [HikariPool-<*>-housekeeper] com.zaxxer.hikari.pool.HikariPool : HikariPool-<*> - Pool stats (total=<*>, active=<*>, idle=<*>, waiting=<*>)
-<*> DEBUG <*> --- [http-nio-<*>-exec-<*>] o.s.web.servlet.DispatcherServlet : POST <*> parameters={masked}
-<*>  INFO <*> --- [http-nio-<*>-exec-<*>] c.e.demo.OrderController : Created order <*> for customer <*>
+[SNAPSHOT  2026-07-19T10:02:31.512]  top 10 of 14 templates
+    1029  #0  <*> DEBUG <*> --- [http-nio-<*>-exec-<*>] org.hibernate.SQL : select o1_<*>.id,o1_<*>.total,o1_<*>.status from orders o1_<*> where o1_<*>.id=?
+    1019  #2  <*> DEBUG <*> --- [HikariPool-<*>-housekeeper] com.zaxxer.hikari.pool.HikariPool : HikariPool-<*> - Pool stats (total=<*>, active=<*>, idle=<*>, waiting=<*>)
+     616  #3  <*> INFO <*> --- [http-nio-<*>-exec-<*>] c.e.demo.OrderController : Created order <*> for customer <*>
+     298  #5  <*> DEBUG <*> --- [http-nio-<*>-exec-<*>] o.s.web.servlet.DispatcherServlet : POST <*> parameters={masked}
 ```
 
 **Why `--depth 9`?** Every Spring Boot line starts with the same 7-token prefix
@@ -138,8 +139,7 @@ register the appender in your `log4j2.xml`:
 </Configuration>
 ```
 
-distile ships its Log4j2 plugin descriptor, so the appender is found automatically — no
-`packages` attribute needed.
+distile ships its Log4j2 plugin descriptor, so the appender is found automatically.
 
 Attributes mirror the CLI flags: `simThreshold`, `depth`, `maxChildren`, `topN`,
 `snapshotInterval`, `emitNew`, `json`, `outlierMax`, and `file` (output path; defaults to
@@ -148,10 +148,10 @@ stdout).
 When you log with parameters — `log.info("user {} logged in from {}", id, ip)` — the
 appender knows the `{}` positions are variables and marks them directly, so templates are
 clean from the first line. Concatenated messages fall back to the same masking the stdin
-path uses. Either way a message clusters to the **same template** it would via stdin.
+path uses. Either way a message clusters to the same template it would via stdin.
 
 The appender sees the *message* before serialization, so its templates carry no timestamp
-or level prefix — cleaner than tailing a rendered log file. distile keeps only templates and
+or level prefix, cleaner than tailing a rendered log file. distile keeps only templates and
 counts; it never stores the actual parameter values.
 
 ## Design
@@ -180,19 +180,19 @@ java -cp target/classes:target/test-classes \
      org.korhan.distile.core.Benchmark 1000000                       # N lines
 ```
 
-**`Benchmark`** — throughput sanity check. Feeds a synthetic log built from ~8
+**`Benchmark`**: throughput sanity check. Feeds a synthetic log built from ~8
 templates with randomized variable parts, reports lines/sec, and asserts the
 template count stays small (masking/threshold regressions that cause explosion
 fail here).
 
-**`ScaleAndSnapshotTest`** — the high-cardinality, long-running case `Benchmark`
+**`ScaleAndSnapshotTest`**: the high-cardinality, long-running case `Benchmark`
 doesn't reach. It generates thousands of *structurally distinct* templates
 (distinct tokens in tree-routing positions, so they land in separate leaves) and
 takes Top-N snapshots **concurrently with ingest**. It guards two things:
 
-- tree descent and cluster creation stay bounded at scale — thousands of real
+- tree descent and cluster creation stay bounded at scale, thousands of real
   templates form without the fan-out running away;
-- `snapshotTopN` taken while the ingest thread mutates counts never throws —
+- `snapshotTopN` taken while the ingest thread mutates counts never throws
   neither a `ConcurrentModificationException` from the copy nor TimSort's
   *"Comparison method violates its general contract"* from sorting live counts.
   (The snapshot copies counts under the lock and sorts outside it, so the ingest
