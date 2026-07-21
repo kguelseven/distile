@@ -1,44 +1,25 @@
 package org.korhan.distile.demo;
 
 import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 /**
- * A tiny demo app that drives distile's <b>in-process Log4j2 appender</b>
- * ({@link org.korhan.distile.log4j.DistileAppender}) live — the counterpart to {@link LogSimulator}
- * for the appender frontend.
+ * Drives distile's in-process Log4j2 appender ({@link org.korhan.distile.log4j.DistileAppender})
+ * live — the appender-frontend counterpart to {@link LogSimulator}.
  *
- * <p>Where {@code LogSimulator} writes fully-rendered log <em>lines</em> to stdout (for the
- * stdin/file path, where masking earns its keep by stripping the timestamp/level/thread prefix),
- * this tool makes real {@code logger.info("... {} ...", args)} calls. The {@code DistileAppender}
- * sees each {@code LogEvent}'s message <em>before serialization</em>: for a parameterized message
- * it takes the format and turns each {@code {}} into the wildcard {@code <*>}, so a login logged
- * 5000 times with different users/IPs collapses to the single template
- * {@code auth user <*> logged in from <*>}. No timestamp/level/logger prefix is ever in the
- * message, which is exactly the in-process appender's advantage: a cleaner signal than a rendered
- * line. (Consequently these templates match feeding the same message <em>strings</em> via stdin —
- * not tailing the app's rendered log file. See the appender's class doc.)
+ * <p>Instead of writing rendered lines, it makes real {@code logger.debug("... {} ...", args)} calls
+ * over the same Spring Boot 3 scenario as {@code LogSimulator} (reusing its pools/generators, through
+ * real framework logger names). The appender reads each message before serialization — no
+ * timestamp/level/logger prefix — so parameterized {@code {}} positions become {@code <*>} directly.
+ * The HikariCP call reproduces that library's real SLF4J format; the Hibernate SQL line is a pre-built
+ * string, exercising the appender's non-parameterized (masking) fallback.
  *
- * <p>The scenario — hot templates plus rare outliers, and the value pools/generators — is reused
- * verbatim from {@link LogSimulator} so both demos show the <em>same</em> recognizable set of
- * events. One template deliberately logs a pre-built (concatenated) string to exercise the
- * appender's non-parameterized fallback path, where masking does all the work — just like the
- * stdin path.
- *
- * <p>Run it via the {@code ./log4jdemo} launcher:
- * <pre>
- *   mvn -q test-compile              # once, so the classes exist
- *   ./log4jdemo --rate 40 --stdout   # watch the report live in the terminal; Ctrl-C to stop
- *   ./log4jdemo --rate 40            # default: report written to distile-templates.log
- * </pre>
- * Output (new-template events, periodic Top-N snapshots, and the final/outlier report on shutdown)
- * comes from the appender itself. It goes to a file by default ({@code log4j2-distile-demo.xml}) or
- * to the console with {@code --stdout} ({@code log4j2-distile-stdout-demo.xml}).
+ * <p>Run via {@code ./log4jdemo} (after {@code mvn -q test-compile}): {@code --stdout} prints the
+ * report to the console, otherwise it goes to {@code distile-templates.log}. See {@code --help}.
  */
 public final class Log4jDemo {
 
@@ -50,8 +31,21 @@ public final class Log4jDemo {
     // Must match the file= attribute in CONFIG_FILE. Used only for the console hint in file mode.
     private static final String REPORT_FILE = "distile-templates.log";
 
+    // Full framework logger names (what a real app registers; the console abbreviates them). These
+    // are plain string constants, so referencing them does NOT trigger Log4j2 startup — loggers are
+    // fetched lazily inside the templates, after main() has selected the config.
+    private static final String LOG_DISPATCHER = "org.springframework.web.servlet.DispatcherServlet";
+    private static final String LOG_HIBERNATE  = "org.hibernate.SQL";
+    private static final String LOG_HIKARI     = "com.zaxxer.hikari.pool.HikariPool";
+    private static final String LOG_ORDERS     = "com.example.demo.OrderController";
+    private static final String LOG_PAYMENTS   = "com.example.demo.PaymentService";
+    private static final String LOG_REPORT     = "com.example.demo.ReportJob";
+    private static final String LOG_EXCEPTIONS = "com.example.demo.GlobalExceptionHandler";
+    private static final String LOG_TOMCAT     = "org.springframework.boot.web.embedded.tomcat.TomcatWebServer";
+    private static final String LOG_APP        = "com.example.demo.DemoApplication";
+
     /** A named log template: a weight (how often it fires) and the log call it makes. */
-    private record Template(int weight, BiConsumer<Logger, Random> emit) {}
+    private record Template(int weight, Consumer<Random> emit) {}
 
     public static void main(String[] args) throws InterruptedException {
         Config cfg = Config.parse(args);
@@ -62,13 +56,12 @@ public final class Log4jDemo {
 
         // Pick the config and set the property BEFORE the first LogManager call below — that call
         // triggers Log4j2 startup, which reads log4j2.configurationFile exactly once. (This is why
-        // the logger is a local, acquired here, not a static field initialized at class load.)
+        // loggers are fetched lazily inside the templates, never as static fields at class load.)
         System.setProperty("log4j2.configurationFile", cfg.stdout ? CONFIG_STDOUT : CONFIG_FILE);
         if (!cfg.stdout) {
             System.out.println("» distilling to " + REPORT_FILE + " — watch it live with:  tail -f " + REPORT_FILE);
             System.out.println("  (add --stdout to print the report to this console instead)");
         }
-        Logger log = LogManager.getLogger("app");
 
         Random rnd = cfg.seed != null ? new Random(cfg.seed) : new Random();
         List<Template> templates = templates();
@@ -81,7 +74,7 @@ public final class Log4jDemo {
         // which flushes distile's final + outlier report. We do not print anything ourselves — the
         // appender owns all emission, exactly as on the CLI path.
         while (cfg.count == 0 || emitted < cfg.count) {
-            pick(templates, totalWeight, rnd).emit().accept(log, rnd);
+            pick(templates, totalWeight, rnd).emit().accept(rnd);
             emitted++;
             if (sleepMs > 0) {
                 Thread.sleep(sleepMs);
@@ -103,42 +96,48 @@ public final class Log4jDemo {
     }
 
     /**
-     * The same scenario as {@link LogSimulator}, expressed as parameterized Log4j2 calls. The
+     * The same Spring Boot 3 scenario as {@link LogSimulator}, expressed as real Log4j2 calls. The
      * {@code {}} placeholders become {@code <*>} in the clustered template; the literal words are
      * what distile keys on. Weights mirror LogSimulator so the Top-N ranking lines up.
      */
     private static List<Template> templates() {
         List<Template> t = new ArrayList<>();
 
-        // --- Hot templates (dominate the stream) -----------------------------
-        t.add(new Template(120, (log, r) ->
-                log.info("auth user {} logged in from {}", LogSimulator.user(r), LogSimulator.ip(r))));
-        t.add(new Template(160, (log, r) ->
-                log.info("http GET {} {} {}ms", LogSimulator.path(r), LogSimulator.ok(r), LogSimulator.latency(r))));
-        t.add(new Template(90, (log, r) ->
-                log.info("http POST {} {} {}ms", LogSimulator.path(r), LogSimulator.ok(r), LogSimulator.latency(r))));
-        t.add(new Template(140, (log, r) ->
-                log.debug("cache {} key k{}", r.nextBoolean() ? "hit" : "miss", r.nextInt(100000))));
-        t.add(new Template(70, (log, r) ->
-                log.warn("db slow query q{} took {}ms", r.nextInt(500), 200 + r.nextInt(4000))));
-        t.add(new Template(80, (log, r) ->
-                log.info("worker job {} completed in {}ms", LogSimulator.uuid(r), LogSimulator.latency(r))));
-        t.add(new Template(50, (log, r) ->
-                log.warn("http upstream {} retry {}/3", LogSimulator.host(r), 1 + r.nextInt(3))));
-        t.add(new Template(40, (log, r) ->
-                log.error("http request {} failed status {}", LogSimulator.uuid(r), LogSimulator.err(r))));
-        t.add(new Template(60, (log, r) ->
-                log.debug("metrics cpu {} mem {} load {}", r.nextInt(100), r.nextInt(100), r.nextInt(16))));
+        // --- Hot templates: a busy Spring Boot 3 web service ------------------
+        // Spring MVC request in / request complete (DispatcherServlet at DEBUG). "parameters={masked}"
+        // is a literal (Spring masks params by default), not a placeholder — hint() leaves it intact.
+        t.add(new Template(160, r -> LogManager.getLogger(LOG_DISPATCHER)
+                .debug("{} \"{}\", parameters={masked}", LogSimulator.method(r), LogSimulator.path(r))));
+        t.add(new Template(120, r -> LogManager.getLogger(LOG_DISPATCHER)
+                .debug("Completed {}", LogSimulator.completion(r))));
+        // Hibernate logs SQL as a pre-built string (no placeholders) -> appender's SimpleMessage
+        // fallback -> masking. A fixed query so it clusters cleanly.
+        t.add(new Template(140, r -> LogManager.getLogger(LOG_HIBERNATE)
+                .debug("select o1_0.id,o1_0.total,o1_0.status from orders o1_0 where o1_0.id=?")));
+        // HikariCP pool stats — the library's actual SLF4J format string.
+        t.add(new Template(140, r -> {
+            int[] s = LogSimulator.hikariStats(r);
+            LogManager.getLogger(LOG_HIKARI)
+                    .debug("HikariPool-1 - Pool stats (total={}, active={}, idle={}, waiting={})",
+                            s[0], s[1], s[2], s[3]);
+        }));
+        // Application loggers.
+        t.add(new Template(90, r -> LogManager.getLogger(LOG_ORDERS)
+                .info("Created order {} for customer {}", LogSimulator.orderId(r), LogSimulator.customerId(r))));
+        t.add(new Template(70, r -> LogManager.getLogger(LOG_PAYMENTS)
+                .warn("Retrying payment gateway attempt {}/3", 1 + r.nextInt(3))));
+        t.add(new Template(60, r -> LogManager.getLogger(LOG_REPORT)
+                .info("Generated daily report in {}ms", LogSimulator.latency(r))));
+        t.add(new Template(40, r -> LogManager.getLogger(LOG_EXCEPTIONS)
+                .error("Unhandled exception handling request {}", LogSimulator.uuid(r))));
 
-        // --- Rare outliers (should surface in distile's outlier view on a bounded --count run) ---
-        t.add(new Template(1, (log, r) ->
-                log.info("config reloaded from /etc/app/config.yaml checksum {}", LogSimulator.hex(r))));
-        t.add(new Template(1, (log, r) ->
-                log.error("FATAL disk full on /var/lib/app free {}bytes", r.nextInt(4096))));
-        // Non-parameterized on purpose: a pre-built string exercises the appender's SimpleMessage
-        // fallback, where masking (not placeholder hints) collapses the variable part.
-        t.add(new Template(1, (log, r) ->
-                log.warn("clock skew detected " + (50 + r.nextInt(900)) + "ms drift")));
+        // --- Rare outliers (surface in distile's outlier view on a bounded --count run) ----------
+        t.add(new Template(1, r -> LogManager.getLogger(LOG_TOMCAT)
+                .info("Tomcat started on port {} (http) with context path '{}'", 8080, "/")));
+        t.add(new Template(1, r -> LogManager.getLogger(LOG_APP)
+                .info("Started DemoApplication in {} seconds (process running for {})", "3.456", "4.123")));
+        t.add(new Template(1, r -> LogManager.getLogger(LOG_HIKARI)
+                .warn("HikariPool-1 - Connection is not available, request timed out after {}ms", 30000)));
 
         return t;
     }
@@ -170,7 +169,7 @@ public final class Log4jDemo {
 
     private static void printUsage() {
         System.out.println("""
-            Log4jDemo — drive distile's in-process Log4j2 appender with fake logging calls.
+            Log4jDemo — drive distile's in-process Log4j2 appender with fake Spring Boot 3 logging.
 
             Usage: ./log4jdemo [--rate N] [--count N] [--seed N] [--stdout]
 

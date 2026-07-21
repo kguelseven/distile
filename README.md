@@ -5,18 +5,21 @@
 When an app runs, it writes thousands of log lines, mostly the same
 messages over and over, just with different values:
 
-    12:01:03 INFO user 4711 logged in from 10.0.0.1
-    12:01:04 INFO user 8892 logged in from 10.0.0.5
-    12:01:04 WARN [worker-3] db slow query users took 1043ms
-    12:01:05 INFO user 2231 logged in from 10.0.0.9
+    2026-07-19T10:00:00.100Z  INFO 24236 --- [http-nio-8080-exec-3] c.e.demo.OrderController : Created order 33712 for customer 7708
+    2026-07-19T10:00:00.137Z ERROR 24236 --- [http-nio-8080-exec-8] c.e.demo.GlobalExceptionHandler : Unhandled exception handling request 5ad9d4ac-5a59-5c50-f7cd-524471cef2da
+    2026-07-19T10:00:00.174Z DEBUG 24236 --- [HikariPool-1-housekeeper] com.zaxxer.hikari.pool.HikariPool : HikariPool-1 - Pool stats (total=10, active=7, idle=3, waiting=2)
+    2026-07-19T10:00:00.211Z  INFO 24236 --- [http-nio-8080-exec-7] c.e.demo.OrderController : Created order 99662 for customer 9961
+    2026-07-19T10:00:00.248Z ERROR 24236 --- [http-nio-8080-exec-8] c.e.demo.GlobalExceptionHandler : Unhandled exception handling request 41ad07fd-8555-5715-2566-e91d4157082a
+    2026-07-19T10:00:00.285Z ERROR 24236 --- [http-nio-8080-exec-4] c.e.demo.GlobalExceptionHandler : Unhandled exception handling request c1bbbd6e-d6f9-223e-1001-1a26077d6f97
 
-On a console scrolling by thousands of lines per second, the messages
+On a console scrolling by thousands of lines, the messages
 that matter drown in the noise. distile groups lines of the same shape
 into one **template** (the fixed part of the message) with the changing
 parts replaced by `<*>` and counts each one:
 
-    367  #0  <*> INFO user <*> logged in from <*>
-    120  #1  <*> WARN [worker-<*>] db slow query <*> took <*>
+     288  #10  <*> ERROR <*> --- [http-nio-<*>-exec-<*>] c.e.demo.GlobalExceptionHandler : Unhandled exception handling request <*>
+     616  #3  <*> INFO <*> --- [http-nio-<*>-exec-<*>] c.e.demo.OrderController : Created order <*> for customer <*>
+    1019  #2  <*> DEBUG <*> --- [HikariPool-<*>-housekeeper] com.zaxxer.hikari.pool.HikariPool : HikariPool-<*> - Pool stats (total=<*>, active=<*>, idle=<*>, waiting=<*>)
 
 So instead of hundreds of near-identical lines, you see the handful of
 things your app is really doing, each with a count, and the rare error
@@ -27,11 +30,9 @@ It runs locally on a live stream:
     tail -f app.log | ./distile
 
 Under the hood, distile is a from-scratch Java implementation of the
-[Drain](https://ieeexplore.ieee.org/document/8029742) algorithm: a
-streaming log-template extractor that distils noisy logs into
-frequency-ranked patterns. Point it at a log stream and it
-collapses thousands of lines into a small, readable set of templates,
-ranked by frequency, with an outlier view.
+[Drain](https://ieeexplore.ieee.org/document/8029742) algorithm — a
+streaming log-template extractor. Everything stays on your machine and in
+memory (just the templates and their counts); no server, no database.
 
 ## Quick start
 
@@ -87,26 +88,45 @@ match → count++**.
 
 ## Try it
 
-A built-in generator emits varied fake logs to exercise distile live:
+A built-in generator emits fake **Spring Boot 3** console logs — Spring MVC, Hibernate,
+HikariCP, Tomcat — to exercise distile live:
 
 ```bash
-./logsim --rate 40 | ./distile --snapshot-interval 3 --depth 6
+./logsim --rate 40 | ./distile --snapshot-interval 3 --depth 9
 ```
 
-`--depth 6` suits the generator's `<ts> LEVEL [thread] <verb> …` line shape: it keeps
-the leading tokens (thread pool, request verb/method) as distinct templates while still
-collapsing the variable tail (ids, paths, latencies). At the default `--depth 4` those
-verbs merge — e.g. `http GET …` and `http POST …` become one `http <*> …` template
-(higher `--depth` protects more leading tokens; see the note above).
+Raw lines look like a real app's console:
+
+```
+2026-07-19T10:00:00.037Z DEBUG 24236 --- [http-nio-8080-exec-3] o.s.web.servlet.DispatcherServlet        : Completed 409 Conflict
+2026-07-19T10:00:00.074Z DEBUG 24236 --- [HikariPool-1-housekeeper] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Pool stats (total=10, active=7, idle=3, waiting=2)
+```
+
+…and distile collapses thousands of them into the handful of patterns actually happening:
+
+```
+<*> DEBUG <*> --- [http-nio-<*>-exec-<*>] org.hibernate.SQL : select o1_<*>.id,o1_<*>.total,o1_<*>.status from orders o1_<*> where o1_<*>.id=?
+<*> DEBUG <*> --- [HikariPool-<*>-housekeeper] com.zaxxer.hikari.pool.HikariPool : HikariPool-<*> - Pool stats (total=<*>, active=<*>, idle=<*>, waiting=<*>)
+<*> DEBUG <*> --- [http-nio-<*>-exec-<*>] o.s.web.servlet.DispatcherServlet : POST <*> parameters={masked}
+<*>  INFO <*> --- [http-nio-<*>-exec-<*>] c.e.demo.OrderController : Created order <*> for customer <*>
+```
+
+**Why `--depth 9`?** Every Spring Boot line starts with the same 7-token prefix
+(timestamp, level, PID, `---`, thread, logger, `:`) before the real message. distile
+groups by the leading tokens, so the depth has to reach past that prefix to tell events
+apart by their message — here it even splits requests by HTTP method. The default
+`--depth 4` still gives a tidy ~10-template summary; it just lumps all the
+DispatcherServlet lines into one. Going much deeper over-splits. Framework logs simply
+need a deeper tree than simple ones.
 
 ## Log4j2 appender
 
 For your own JVM apps you can skip the file round-trip and plug distile straight into
 Log4j2, so log events are distilled **in-process**. Add distile as a dependency, then
-register the appender in `log4j2.xml` (the `packages` attribute points Log4j at it):
+register the appender in your `log4j2.xml`:
 
 ```xml
-<Configuration packages="org.korhan.distile.log4j">
+<Configuration>
   <Appenders>
     <Distile name="distile" snapshotInterval="5" topN="10"/>
   </Appenders>
@@ -117,6 +137,9 @@ register the appender in `log4j2.xml` (the `packages` attribute points Log4j at 
   </Loggers>
 </Configuration>
 ```
+
+distile ships its Log4j2 plugin descriptor, so the appender is found automatically — no
+`packages` attribute needed.
 
 Attributes mirror the CLI flags: `simThreshold`, `depth`, `maxChildren`, `topN`,
 `snapshotInterval`, `emitNew`, `json`, `outlierMax`, and `file` (output path; defaults to
@@ -195,8 +218,6 @@ and cut young-GC collections from ~121 to ~10.
 - [x] Simulator app to try distile
 - [x] Check Java 25 requirement — Java 21 is sufficient
 - [x] Log adapter for Log4j
-- [ ] Parameter extraction
-- [ ] Template persistence
 
 
 ## License
