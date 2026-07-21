@@ -13,18 +13,21 @@ import java.util.function.Function;
  * <p>Emits realistic, varied single-line logs to stdout continuously so it can be
  * piped straight in:
  * <pre>
- *   java src/test/java/org/korhan/distile/demo/LogSimulator.java --rate 30 | ./distile --snapshot-interval 3
+ *   java src/test/java/org/korhan/distile/demo/LogSimulator.java --rate 30 | ./distile --snapshot-interval 3 --depth 6
  * </pre>
  * or, more conveniently, via the {@code ./logsim} launcher.
  *
- * <p>Runs via Java 25 source-launch — no build, no dependencies — and also
+ * <p>Runs via Java 21 source-launch — no build, no dependencies — and also
  * compiles into the test tree with the rest of the project. It has no {@code @Test}
  * methods and does not match the surefire naming pattern, so it is never run as a
  * test; it is a hand-run tool. A handful of "hot" templates dominate the stream
- * (so distile has clear Top-N winners) while a few rare "outlier" templates appear
- * occasionally (so they land in distile's outlier view at count &le; 2). Every
- * template is a single, space-tokenizable line with a stable token count, which is
- * what distile's length bucketing wants.
+ * (so distile has clear Top-N winners) while a few rare "outlier" templates fire
+ * with probability ~1/813 each. Over a short, bounded run ({@code --count} in the
+ * low hundreds) these stay at count &le; 2 and land in distile's outlier view; in
+ * an unbounded run they slowly accumulate past that (~12 per 10k lines), so use
+ * {@code --count} when you want them to read as outliers. Every template is a
+ * single, space-tokenizable line with a stable token count, which is what
+ * distile's length bucketing wants.
  */
 public final class LogSimulator {
 
@@ -40,16 +43,20 @@ public final class LogSimulator {
     private static long lineIndex;
     private static String currentTs = "";
 
-    private static final String[] THREADS =
+    // The value pools and the variable-part generators below are package-private (not private)
+    // on purpose: the sibling Log4jDemo reuses this exact vocabulary so the two demos exercise the
+    // *same* recognizable scenario over different frontends (rendered stdout line here; real
+    // parameterized Log4j2 calls there). Single source of truth for the scenario, no duplication.
+    static final String[] THREADS =
             {"main", "http-1", "http-2", "worker-1", "worker-2", "sched-1"};
-    private static final String[] USERS =
+    static final String[] USERS =
             {"alice", "bob", "carol", "dave", "erin", "frank", "grace", "heidi"};
-    private static final String[] PATHS =
+    static final String[] PATHS =
             {"/api/users", "/api/orders", "/api/cart", "/health", "/login", "/api/search"};
-    private static final String[] HOSTS =
+    static final String[] HOSTS =
             {"cache-a", "cache-b", "db-primary", "db-replica", "payments-svc"};
-    private static final int[] OK_STATUS = {200, 201, 204, 304};
-    private static final int[] ERR_STATUS = {400, 401, 403, 404, 429, 500, 502, 503};
+    static final int[] OK_STATUS = {200, 201, 204, 304};
+    static final int[] ERR_STATUS = {400, 401, 403, 404, 429, 500, 502, 503};
 
     /** A named log template: a weight (how often it fires) and a line generator. */
     private record Template(int weight, Function<Random, String> gen) {}
@@ -136,23 +143,26 @@ public final class LogSimulator {
     }
 
     // --- variable-part generators --------------------------------------------
+    // ts()/thread() stay private: a timestamp and a bracketed thread name are part of a *rendered*
+    // log line, which is this frontend's job. The appender sees the message before serialization,
+    // so Log4jDemo has no use for them. Everything below is shared (see the pools comment above).
     private static String ts()            { return currentTs; }
     private static String thread(Random r){ return "[" + THREADS[r.nextInt(THREADS.length)] + "]"; }
-    private static String user(Random r)  { return USERS[r.nextInt(USERS.length)]; }
-    private static String path(Random r)  { return PATHS[r.nextInt(PATHS.length)]; }
-    private static String host(Random r)  { return HOSTS[r.nextInt(HOSTS.length)]; }
-    private static int    ok(Random r)    { return OK_STATUS[r.nextInt(OK_STATUS.length)]; }
-    private static int    err(Random r)   { return ERR_STATUS[r.nextInt(ERR_STATUS.length)]; }
-    private static int    latency(Random r){ return 1 + r.nextInt(500); }
-    private static String ip(Random r)    { return "10." + r.nextInt(256) + "." + r.nextInt(256) + "." + (1 + r.nextInt(254)); }
+    static String user(Random r)  { return USERS[r.nextInt(USERS.length)]; }
+    static String path(Random r)  { return PATHS[r.nextInt(PATHS.length)]; }
+    static String host(Random r)  { return HOSTS[r.nextInt(HOSTS.length)]; }
+    static int    ok(Random r)    { return OK_STATUS[r.nextInt(OK_STATUS.length)]; }
+    static int    err(Random r)   { return ERR_STATUS[r.nextInt(ERR_STATUS.length)]; }
+    static int    latency(Random r){ return 1 + r.nextInt(500); }
+    static String ip(Random r)    { return "10." + r.nextInt(256) + "." + r.nextInt(256) + "." + (1 + r.nextInt(254)); }
 
-    private static String uuid(Random r) {
+    static String uuid(Random r) {
         return String.format("%08x-%04x-%04x-%04x-%012x",
                 r.nextInt(), r.nextInt(0x10000), r.nextInt(0x10000), r.nextInt(0x10000),
                 r.nextLong() & 0xFFFFFFFFFFFFL);
     }
 
-    private static String hex(Random r) {
+    static String hex(Random r) {
         return String.format("%016x", r.nextLong());
     }
 
@@ -192,7 +202,10 @@ public final class LogSimulator {
               --help      show this help
 
             Example:
-              ./logsim --rate 40 | ./distile --snapshot-interval 3
+              ./logsim --rate 40 | ./distile --snapshot-interval 3 --depth 6
+
+            (--depth 6 keeps the generator's [thread] and request-verb tokens as distinct
+             templates; the default --depth 4 merges verbs like GET/POST into one template.)
             """);
     }
 }

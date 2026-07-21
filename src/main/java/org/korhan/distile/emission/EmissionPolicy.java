@@ -4,6 +4,7 @@ import org.korhan.distile.core.LogCluster;
 import org.korhan.distile.core.MatchResult;
 import org.korhan.distile.report.Reporter;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,8 +58,11 @@ public final class EmissionPolicy {
 
     /** React to one line's match result, emitting any triggered events. */
     public void onMatch(MatchResult result) {
+        // Instant.now() is called ONLY when an event actually fires (new template / milestone
+        // crossing) — both are rare. The common per-line case (matched an existing template, nothing
+        // to emit) touches no clock, keeping the hot path allocation- and syscall-free.
         if (emitNew && result.isNew()) {
-            reporter.emit(new EmissionEvent.NewTemplate(result.cluster()));
+            reporter.emit(new EmissionEvent.NewTemplate(Instant.now(), result.cluster()));
         }
         if (milestones.length > 0) {
             checkMilestone(result);
@@ -81,7 +85,7 @@ public final class EmissionPolicy {
         }
         if (crossed > last) {
             lastMilestone.put(id, crossed);
-            reporter.emit(new EmissionEvent.Milestone(result.cluster(), crossed));
+            reporter.emit(new EmissionEvent.Milestone(Instant.now(), result.cluster(), crossed));
         }
     }
 
@@ -93,6 +97,7 @@ public final class EmissionPolicy {
         List<LogCluster> outliers = allSorted.stream()
                 .filter(c -> c.count() <= outlierMax)
                 .toList();
-        return new EmissionEvent.Final(allSorted, outliers, total);
+        // Stamp the moment the report is built (end of stream / on demand), analogous to a snapshot.
+        return new EmissionEvent.Final(Instant.now(), allSorted, outliers, total);
     }
 }

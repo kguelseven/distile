@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Log4j2 configuration for the Log4jDemo tool — and a copy-pasteable example of wiring the
+  in-process distile appender into a real application.
+
+  This is the DEFAULT Log4jDemo config: it writes the distilled report to a file (see `file` below).
+  Its sibling log4j2-distile-stdout-demo.xml is identical but writes to the console instead, and is
+  selected by the log4jdemo stdout flag (run the launcher help for its exact spelling; an XML
+  comment cannot contain a double dash, so flag names are described here, not written literally).
+
+  Deliberately NOT named log4j2.xml: that name is auto-discovered by Log4j2 and would hijack the
+  Surefire test run (every test's logging would be distiled, printing a report mid-build). This
+  file is selected explicitly by Log4jDemo via the log4j2.configurationFile system property.
+
+  To use distile in your own app, copy the <Distile .../> appender line into your log4j2.xml.
+
+    <Distile ...>   — attributes mirror the `distile` CLI flags 1:1 (same names, same defaults).
+
+  The appender is discovered via the Log4j2 plugin descriptor generated at build time (the
+  log4j-core annotation processor is wired into maven-compiler-plugin). If you embed distile in a
+  project that does NOT run that processor, add a `packages="org.korhan.distile.log4j"` attribute to
+  the Configuration element below so Log4j2 finds the plugin by scanning instead.
+-->
+<Configuration status="WARN">
+  <Appenders>
+    <!-- topN/snapshotInterval kept lively for a demo; omit any attribute to take the CLI default. -->
+    <Distile name="distile" file="distile-templates.log" snapshotInterval="3" topN="10" emitNew="true" outlierMax="2"/>
+  </Appenders>
+  <Loggers>
+    <!-- DEBUG so the scenario's cache/metrics DEBUG templates surface too. The app's log events go
+         ONLY to the distile appender: the point of the demo is that distile collapses the stream,
+         so we intentionally do not also render raw lines to the console. -->
+    <Root level="DEBUG">
+      <AppenderRef ref="distile"/>
+    </Root>
+  </Loggers>
+</Configuration>

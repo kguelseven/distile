@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Console variant of the Log4jDemo config, selected by the log4jdemo stdout flag (run the launcher
+  help for its exact spelling; an XML comment cannot contain a double dash, so it is not written
+  literally here).
+
+  Identical to log4j2-distile-demo.xml except it omits the `file` attribute, so the distilled
+  report (new-template events, Top-N snapshots, final/outlier report) is written to System.out and
+  you watch it live in the terminal. The file variant (the default) writes the same report to
+  distile-templates.log instead. See log4j2-distile-demo.xml for the full attribute notes.
+
+  Deliberately NOT named log4j2.xml, for the same reason as its sibling: that name auto-loads and
+  would hijack the Surefire test run.
+-->
+<Configuration status="WARN">
+  <Appenders>
+    <!-- No `file` attribute -> the appender writes to System.out. -->
+    <Distile name="distile" snapshotInterval="3" topN="10" emitNew="true" outlierMax="2"/>
+  </Appenders>
+  <Loggers>
+    <Root level="DEBUG">
+      <AppenderRef ref="distile"/>
+    </Root>
+  </Loggers>
+</Configuration>

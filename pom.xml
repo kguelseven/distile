@@ -16,6 +16,7 @@
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <picocli.version>4.7.6</picocli.version>
+        <log4j.version>2.25.3</log4j.version>
         <junit.version>5.11.4</junit.version>
     </properties>
 
@@ -24,6 +25,16 @@
             <groupId>info.picocli</groupId>
             <artifactId>picocli</artifactId>
             <version>${picocli.version}</version>
+        </dependency>
+
+        <!-- Log4j2 appender adapter. 'provided': the appender compiles/tests against it, but
+             it is NOT bundled in the fat jar and is NOT a runtime dep of the CLI — any app
+             that uses the appender already ships Log4j2 on its own classpath. -->
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-core</artifactId>
+            <version>${log4j.version}</version>
+            <scope>provided</scope>
         </dependency>
 
         <dependency>
@@ -42,6 +53,21 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.13.0</version>
+                <configuration>
+                    <!-- Run Log4j2's PluginProcessor at compile time so it generates the plugin
+                         descriptor (Log4j2Plugins.dat) for DistileAppender. Without this, Log4j2
+                         cannot find the appender by name and falls back to deprecated package
+                         scanning (the `packages` config attribute). Declaring the processor path
+                         explicitly is also required because modern javac (JDK 23+) no longer runs
+                         annotation processors that are merely on the classpath. -->
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.apache.logging.log4j</groupId>
+                            <artifactId>log4j-core</artifactId>
+                            <version>${log4j.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
             </plugin>
 
             <plugin>

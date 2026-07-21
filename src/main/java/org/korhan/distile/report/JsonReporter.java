@@ -4,6 +4,7 @@ import org.korhan.distile.core.LogCluster;
 import org.korhan.distile.emission.EmissionEvent;
 
 import java.io.PrintStream;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
@@ -27,23 +28,31 @@ public final class JsonReporter implements Reporter {
         StringBuilder sb = new StringBuilder(128);
         switch (event) {
             case EmissionEvent.NewTemplate e -> {
-                sb.append("{\"event\":\"new\",");
+                sb.append("{\"event\":\"new\",\"at\":\"")
+                        .append(DateTimeFormatter.ISO_INSTANT.format(e.at())).append("\",");
                 cluster(sb, e.cluster());
                 sb.append('}');
             }
             case EmissionEvent.Milestone e -> {
-                sb.append("{\"event\":\"milestone\",\"milestone\":").append(e.milestone()).append(',');
+                sb.append("{\"event\":\"milestone\",\"at\":\"")
+                        .append(DateTimeFormatter.ISO_INSTANT.format(e.at()))
+                        .append("\",\"milestone\":").append(e.milestone()).append(',');
                 cluster(sb, e.cluster());
                 sb.append('}');
             }
             case EmissionEvent.Snapshot e -> {
-                sb.append("{\"event\":\"snapshot\",\"total\":").append(e.totalTemplates())
+                // "at": the instant the snapshot was taken, as an unambiguous ISO-8601 UTC string.
+                sb.append("{\"event\":\"snapshot\",\"at\":\"")
+                        .append(DateTimeFormatter.ISO_INSTANT.format(e.at()))
+                        .append("\",\"total\":").append(e.totalTemplates())
                         .append(",\"templates\":");
                 array(sb, e.topN());
                 sb.append('}');
             }
             case EmissionEvent.Final e -> {
-                sb.append("{\"event\":\"final\",\"total\":").append(e.totalTemplates())
+                sb.append("{\"event\":\"final\",\"at\":\"")
+                        .append(DateTimeFormatter.ISO_INSTANT.format(e.at()))
+                        .append("\",\"total\":").append(e.totalTemplates())
                         .append(",\"templates\":");
                 array(sb, e.all());
                 sb.append(",\"outliers\":");

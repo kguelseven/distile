@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Thin launcher for the Log4j2 appender demo so usage reads `log4jdemo --rate 40`.
+#
+# Unlike `logsim` (a single self-contained source file run via Java source-launch), this demo
+# drives the real in-process DistileAppender, so it needs the compiled distile classes plus
+# Log4j2 on the classpath. It therefore runs from target/*classes rather than from source.
+set -euo pipefail
+
+# Resolve the directory this script lives in (following symlinks).
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+
+CLASSES="$DIR/target/classes"            # distile core + emission + report + the appender
+TEST_CLASSES="$DIR/target/test-classes"  # LogSimulator + Log4jDemo + the demo log4j2 config
+if [ ! -d "$CLASSES" ] || [ ! -d "$TEST_CLASSES" ]; then
+  echo "log4jdemo: compiled classes not found — run 'mvn test-compile' first." >&2
+  exit 1
+fi
+
+# Log4j2 is a 'provided' dependency, so it is in the local Maven repo but not on any built
+# classpath. Resolve the jars for the exact version the project builds against (read from pom).
+LOG4J_VERSION="$(grep -oP '<log4j.version>\K[^<]+' "$DIR/pom.xml")"
+M2="${HOME}/.m2/repository/org/apache/logging/log4j"
+CORE="$M2/log4j-core/$LOG4J_VERSION/log4j-core-$LOG4J_VERSION.jar"
+API="$M2/log4j-api/$LOG4J_VERSION/log4j-api-$LOG4J_VERSION.jar"
+if [ ! -f "$CORE" ] || [ ! -f "$API" ]; then
+  echo "log4jdemo: Log4j2 $LOG4J_VERSION jars not found in ~/.m2 — run 'mvn package' once to fetch them." >&2
+  exit 1
+fi
+
+exec java -cp "$CLASSES:$TEST_CLASSES:$CORE:$API" org.korhan.distile.demo.Log4jDemo "$@"

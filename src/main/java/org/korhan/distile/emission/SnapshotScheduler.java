@@ -4,6 +4,7 @@ import org.korhan.distile.core.DrainTree;
 import org.korhan.distile.core.LogCluster;
 import org.korhan.distile.report.Reporter;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -51,7 +52,7 @@ public final class SnapshotScheduler implements AutoCloseable {
         try {
             List<LogCluster> top = tree.snapshotTopN(topN);
             if (!top.isEmpty()) {
-                reporter.emit(new EmissionEvent.Snapshot(top, tree.clusterCount()));
+                reporter.emit(new EmissionEvent.Snapshot(Instant.now(), top, tree.clusterCount()));
             }
         } catch (RuntimeException ignored) {
             // intentionally ignored — best-effort periodic view

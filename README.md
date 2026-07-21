@@ -90,15 +90,54 @@ match → count++**.
 A built-in generator emits varied fake logs to exercise distile live:
 
 ```bash
-./logsim --rate 40 | ./distile --snapshot-interval 3
+./logsim --rate 40 | ./distile --snapshot-interval 3 --depth 6
 ```
+
+`--depth 6` suits the generator's `<ts> LEVEL [thread] <verb> …` line shape: it keeps
+the leading tokens (thread pool, request verb/method) as distinct templates while still
+collapsing the variable tail (ids, paths, latencies). At the default `--depth 4` those
+verbs merge — e.g. `http GET …` and `http POST …` become one `http <*> …` template
+(higher `--depth` protects more leading tokens; see the note above).
+
+## Log4j2 appender
+
+For your own JVM apps you can skip the file round-trip and plug distile straight into
+Log4j2, so log events are distilled **in-process**. Add distile as a dependency, then
+register the appender in `log4j2.xml` (the `packages` attribute points Log4j at it):
+
+```xml
+<Configuration packages="org.korhan.distile.log4j">
+  <Appenders>
+    <Distile name="distile" snapshotInterval="5" topN="10"/>
+  </Appenders>
+  <Loggers>
+    <Root level="info">
+      <AppenderRef ref="distile"/>
+    </Root>
+  </Loggers>
+</Configuration>
+```
+
+Attributes mirror the CLI flags: `simThreshold`, `depth`, `maxChildren`, `topN`,
+`snapshotInterval`, `emitNew`, `json`, `outlierMax`, and `file` (output path; defaults to
+stdout).
+
+When you log with parameters — `log.info("user {} logged in from {}", id, ip)` — the
+appender knows the `{}` positions are variables and marks them directly, so templates are
+clean from the first line. Concatenated messages fall back to the same masking the stdin
+path uses. Either way a message clusters to the **same template** it would via stdin.
+
+The appender sees the *message* before serialization, so its templates carry no timestamp
+or level prefix — cleaner than tailing a rendered log file. distile keeps only templates and
+counts; it never stores the actual parameter values.
 
 ## Design
 
 I/O-free core (`core/`) usable as a library; emission (`emission/`) decides
 *when* to surface a template and only reads core state; formatting lives in
-`report/`; adapters (stdin/file/tail) live in `cli/`. Adding a new input mode
-never touches the core.
+`report/`; adapters (stdin/file/tail in `cli/`, the Log4j2 appender in `log4j/`) are
+just different sources of lines over the same core. Adding a new input mode never
+touches the core — the Log4j2 appender was added without changing a single core file.
 
 ## Performance & scale tests
 
@@ -155,7 +194,7 @@ and cut young-GC collections from ~121 to ~10.
 - [x] Initial implementation core and emission
 - [x] Simulator app to try distile
 - [x] Check Java 25 requirement — Java 21 is sufficient
-- [ ] Log adapter for Log4j
+- [x] Log adapter for Log4j
 - [ ] Parameter extraction
 - [ ] Template persistence
 
