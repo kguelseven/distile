@@ -1,26 +1,37 @@
 # <img src="distile-icon.svg" alt="" height="48" valign="middle"> distile
 
-**Streaming log-template extractor. Distils noisy logs into frequency-ranked patterns, locally.**
+**See what your logs are actually saying, without reading every line.**
 
-A from-scratch Java implementation of the [Drain](https://ieeexplore.ieee.org/document/8029742)
-algorithm. Point it at a log stream and it collapses thousands of noisy lines
-into a small, readable set of **templates** (the constant skeleton of a message,
-with variable parts replaced by `<*>`), ranked by frequency, with an outlier
-view.
+When an app runs, it writes thousands of log lines, mostly the same
+messages over and over, just with different values:
 
-```
-tail -f app.log | ./distile
-```
+    12:01:03 INFO user 4711 logged in from 10.0.0.1
+    12:01:04 INFO user 8892 logged in from 10.0.0.5
+    12:01:04 WARN [worker-3] db slow query users took 1043ms
+    12:01:05 INFO user 2231 logged in from 10.0.0.9
 
-```
-[NEW] #0  <*> INFO [http-<*>] http <*> <*> <*> <*>
-[NEW] #1  <*> WARN [worker-<*>] db slow query <*> took <*>
+On a console scrolling by thousands of lines per second, the messages
+that matter drown in the noise. distile groups lines of the same shape
+into one **template** (the fixed part of the message) with the changing
+parts replaced by `<*>` and counts each one:
 
-== snapshot: top 3 of 12 templates ==
-     367  #0  <*> INFO [http-<*>] http <*> <*> <*> <*>
-     120  #1  <*> WARN [worker-<*>] db slow query <*> took <*>
-      54  #5  <*> ERROR [main] http request <*> failed status <*>
-```
+    367  #0  <*> INFO user <*> logged in from <*>
+    120  #1  <*> WARN [worker-<*>] db slow query <*> took <*>
+
+So instead of hundreds of near-identical lines, you see the handful of
+things your app is really doing, each with a count, and the rare error
+hiding among them finally stands out.
+
+It runs locally on a live stream:
+
+    tail -f app.log | ./distile
+
+Under the hood, distile is a from-scratch Java implementation of the
+[Drain](https://ieeexplore.ieee.org/document/8029742) algorithm: a
+streaming log-template extractor that distils noisy logs into
+frequency-ranked patterns. Point it at a log stream and it
+collapses thousands of lines into a small, readable set of templates,
+ranked by frequency, with an outlier view.
 
 ## Quick start
 
@@ -30,8 +41,6 @@ Requires **Java 25** and **Maven**.
 mvn package                       # builds target/distile.jar
 tail -f app.log | ./distile       # or: ./distile -f app.log
 ```
-
-Output columns per template: **count**, **#clusterId**, **template**.
 
 ## Usage
 
