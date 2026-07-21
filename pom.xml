@@ -13,7 +13,7 @@
     <description>Streaming log template extractor (Drain algorithm) — local, offline, dev-time.</description>
 
     <properties>
-        <maven.compiler.release>25</maven.compiler.release>
+        <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <picocli.version>4.7.6</picocli.version>
         <junit.version>5.11.4</junit.version>

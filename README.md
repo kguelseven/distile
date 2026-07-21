@@ -35,7 +35,7 @@ ranked by frequency, with an outlier view.
 
 ## Quick start
 
-Requires **Java 25** and **Maven**.
+Requires **Java 21** and **Maven**.
 
 ```bash
 mvn package                       # builds target/distile.jar
@@ -154,7 +154,7 @@ and cut young-GC collections from ~121 to ~10.
 ## Todos
 - [x] Initial implementation core and emission
 - [x] Simulator app to try distile
-- [ ] Check Java 25 requirement
+- [x] Check Java 25 requirement — Java 21 is sufficient
 - [ ] Log adapter for Log4j
 - [ ] Parameter extraction
 - [ ] Template persistence
