@@ -76,6 +76,25 @@
                 <version>3.5.2</version>
             </plugin>
 
+            <!-- Failsafe runs *IT tests in the integration-test/verify phase, AFTER the shade
+                 plugin has produced target/distile.jar in `package`. The e2e acceptance test
+                 spawns that JAR, so it cannot run under surefire (which fires in `test`, before
+                 the JAR exists). `mvn test` stays fast (unit *Test only); `mvn verify` packages
+                 then runs the e2e. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.5.2</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>

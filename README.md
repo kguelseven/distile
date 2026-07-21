@@ -213,6 +213,23 @@ Masking dominates the per-line cost, so it gets the most attention: reusing rege
 no numeric/structural rule) took the 1M-line run from ~120k to ~756k lines/sec
 and cut young-GC collections from ~121 to ~10.
 
+## Acceptance test
+
+The unit and scale tests drive the core library. One end-to-end test exercises
+the **shipped artifact**: `DistilesSpringBootStreamIT` spawns the real
+`target/distile.jar` (via `java -jar`, input on stdin — the actual pipe path),
+feeds it a deterministic Spring Boot stream from the seeded `LogSimulator`, and
+asserts distile's core promise: thousands of lines collapse to a small, bounded
+set of templates, hot patterns dominate by count, and rare events surface as
+outliers.
+
+It runs under maven-failsafe in the `verify` phase, **after** the JAR is
+packaged (so `mvn test` stays fast):
+
+```bash
+mvn verify        # packages the JAR, then runs the e2e test
+```
+
 ## Todos
 - [x] Initial implementation core and emission
 - [x] Simulator app to try distile
