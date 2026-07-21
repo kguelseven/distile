@@ -205,12 +205,12 @@ ballpark, not a spec:
 
 | Workload                                         | Throughput          | Result                         |
 | ------------------------------------------------ | ------------------- | ------------------------------ |
-| `Benchmark`, 1,000,000 lines (~8 templates)      | ~756k lines/sec     | collapses to 7 templates       |
-| `ScaleAndSnapshotTest`, 300,000 lines            | ~960k lines/sec     | forms 4,096 distinct templates |
+| `Benchmark`, 1,000,000 lines (~8 templates)      | ~730k lines/sec     | collapses to 7 templates       |
+| `ScaleAndSnapshotTest`, 300,000 lines            | ~990k lines/sec     | forms 4,096 distinct templates |
 
 Masking dominates the per-line cost, so it gets the most attention: reusing regex
 `Matcher`s and skipping rules a token provably can't match (a plain word triggers
-no numeric/structural rule) took the 1M-line run from ~120k to ~756k lines/sec
+no numeric/structural rule) took the 1M-line run from ~120k to ~730k lines/sec
 and cut young-GC collections from ~121 to ~10.
 
 ## Acceptance test
