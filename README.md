@@ -1,4 +1,4 @@
-# <img src="distile-icon.svg" alt="" height="48" valign="middle"> distile
+# <img src="docs/distile-icon.svg" alt="" height="48" valign="middle"> distile
 
 **See what your logs are actually saying, without reading every line.**
 
@@ -30,8 +30,16 @@ It runs locally on a live stream:
 
     tail -f app.log | ./distile
 
+Or add `--top` for a live, `top`-style view that refreshes in place instead of scrolling:
+templates ranked by count, a header bar with throughput and totals, and a cyan flash
+whenever a new pattern first appears.
+
+    ./logsim --rate 50 | ./distile --top --top-n 20 --depth 9
+
+![distile --top: a live, top-style view of ranked log templates](docs/distile-top.png)
+
 Under the hood, distile is a from-scratch Java implementation of the
-[Drain](https://ieeexplore.ieee.org/document/8029742) algorithm — a streaming log-template extractor. Everything stays on your machine and in
+[Drain](https://ieeexplore.ieee.org/document/8029742) algorithm, a streaming log-template extractor. Everything stays on your machine and in
 memory (just the templates and their counts).
 
 ## Quick start
@@ -64,11 +72,11 @@ distile [FILE] [options]
   -h, --help / -V, --version
 ```
 
-**Emission** runs two layers by default: a `[NEW]` event when a template first
+Emission runs two layers by default: a `[NEW]` event when a template first
 appears, and a Top-N snapshot every 5s. On stream end (or Ctrl-C) it prints the
 full ranked list plus outliers.
 
-**`--top`** replaces the scrolling output with a live, full-screen `top`-like view
+`--top` replaces the scrolling output with a live, full-screen `top`-like view
 that refreshes in place (every 2s by default): a header bar (clock, running time,
 lines + throughput, template count + new-this-frame) above the ranked table, with
 rows that are new or growing highlighted. Works over a pipe
@@ -76,25 +84,6 @@ rows that are new or growing highlighted. Works over a pipe
 Ctrl-C exits. When output is not an interactive
 terminal (e.g. redirected to a file) it falls back to plain text. Log rotation
 following is not yet handled.
-
-## How it works
-
-Every line runs the same near-O(1) pipeline: **tokenize → mask → tree descent →
-match → count++**.
-
-- Mask first: Variable tokens (timestamps, IPs, UUIDs, hex, numbers) are
-  replaced with `<*>` *before* the tree. This is what stops each unique
-  timestamp spawning its own branch.
-- Fixed-depth tree: Lines are bucketed by token count, then by their leading
-  tokens, down to a leaf holding a handful of candidate templates. Matching only
-  ever compares within one leaf, never globally.
-- Merge to wildcard: A matching line generalises any disagreeing position to
-  `<*>`; templates only lose specificity. Memory is bounded by template count,
-  not line count.
-
-> **Note:** variables in *leading* (tree-routing) tokens split into separate
-> templates unless masked, an inherent Drain trait. Try `--depth 3` to merge
-> more aggressively.
 
 ## Try it
 
@@ -122,13 +111,11 @@ Raw lines look like a real app's console:
      298  #5  <*> DEBUG <*> --- [http-nio-<*>-exec-<*>] o.s.web.servlet.DispatcherServlet : POST <*> parameters={masked}
 ```
 
-**Why `--depth 9`?** Every Spring Boot line starts with the same 7-token prefix
-(timestamp, level, PID, `---`, thread, logger, `:`) before the real message. distile
-groups by the leading tokens, so the depth has to reach past that prefix to tell events
-apart by their message — here it even splits requests by HTTP method. The default
-`--depth 4` still gives a tidy ~10-template summary; it just lumps all the
-DispatcherServlet lines into one. Going much deeper over-splits. Framework logs simply
-need a deeper tree than simple ones.
+Why `--depth 9`? Framework logs prepend a fixed multi-token prefix (timestamp, level, PID,
+thread, logger…) before the real message, and distile groups by leading tokens, so the
+tree has to reach past that prefix to tell events apart. The default `--depth 4` still gives
+a tidy summary; it just lumps the DispatcherServlet lines together. See
+[DESIGN.md](docs/DESIGN.md#tree-depth-and-framework-prefixes) for the full reasoning.
 
 ## Log4j2 appender
 
@@ -155,7 +142,7 @@ Attributes mirror the CLI flags: `simThreshold`, `depth`, `maxChildren`, `topN`,
 `snapshotInterval`, `emitNew`, `json`, `outlierMax`, and `file` (output path; defaults to
 stdout).
 
-When you log with parameters — `log.info("user {} logged in from {}", id, ip)` — the
+When you log with parameters, such as `log.info("user {} logged in from {}", id, ip)`, the
 appender knows the `{}` positions are variables and marks them directly, so templates are
 clean from the first line. Concatenated messages fall back to the same masking the stdin
 path uses. Either way a message clusters to the same template it would via stdin.
@@ -164,88 +151,11 @@ The appender sees the *message* before serialization, so its templates carry no 
 or level prefix, cleaner than tailing a rendered log file. distile keeps only templates and
 counts; it never stores the actual parameter values.
 
-## Design
+## Design & internals
 
-I/O-free core (`core/`) usable as a library; emission (`emission/`) decides
-*when* to surface a template and only reads core state; formatting lives in
-`report/`; adapters (stdin/file/tail in `cli/`, the Log4j2 appender in `log4j/`) are
-just different sources of lines over the same core. Adding a new input mode never
-touches the core — the Log4j2 appender was added without changing a single core file.
-
-## Performance & scale tests
-
-distile is built for long-running processes producing millions of lines, so the
-hot path (tokenize → mask → tree → match) is near-O(1) per line and allocates
-little. Two test classes check this holds.
-
-The tests only assert on results that don't depend on the machine — template
-counts and snapshot consistency. Throughput is measured and printed, but never
-asserted, so running on a slow machine can't break the build.
-
-Run them all with `mvn test`, or drive a class directly for ad-hoc measurement:
-
-```bash
-mvn test                                                              # includes both
-java -cp target/classes:target/test-classes \
-     org.korhan.distile.core.Benchmark 1000000                       # N lines
-```
-
-**`Benchmark`**: throughput sanity check. Feeds a synthetic log built from ~8
-templates with randomized variable parts, reports lines/sec, and asserts the
-template count stays small (masking/threshold regressions that cause explosion
-fail here).
-
-**`ScaleAndSnapshotTest`**: the high-cardinality, long-running case `Benchmark`
-doesn't reach. It generates thousands of *structurally distinct* templates
-(distinct tokens in tree-routing positions, so they land in separate leaves) and
-takes Top-N snapshots **concurrently with ingest**. It guards two things:
-
-- tree descent and cluster creation stay bounded at scale, thousands of real
-  templates form without the fan-out running away;
-- `snapshotTopN` taken while the ingest thread mutates counts never throws
-  neither a `ConcurrentModificationException` from the copy nor TimSort's
-  *"Comparison method violates its general contract"* from sorting live counts.
-  (The snapshot copies counts under the lock and sorts outside it, so the ingest
-  hot path is never blocked by the O(T log T) sort.)
-
-### Numbers seen
-
-Indicative, single JVM, single ingest thread, JDK 25 / G1 on a laptop — treat as
-ballpark, not a spec:
-
-| Workload                                         | Throughput          | Result                         |
-| ------------------------------------------------ | ------------------- | ------------------------------ |
-| `Benchmark`, 1,000,000 lines (~8 templates)      | ~730k lines/sec     | collapses to 7 templates       |
-| `ScaleAndSnapshotTest`, 300,000 lines            | ~990k lines/sec     | forms 4,096 distinct templates |
-
-Masking dominates the per-line cost, so it gets the most attention: reusing regex
-`Matcher`s and skipping rules a token provably can't match (a plain word triggers
-no numeric/structural rule) took the 1M-line run from ~120k to ~730k lines/sec
-and cut young-GC collections from ~121 to ~10.
-
-## Acceptance test
-
-The unit and scale tests drive the core library. One end-to-end test exercises
-the **shipped artifact**: `DistilesSpringBootStreamIT` spawns the real
-`target/distile.jar` (via `java -jar`, input on stdin — the actual pipe path),
-feeds it a deterministic Spring Boot stream from the seeded `LogSimulator`, and
-asserts distile's core promise: thousands of lines collapse to a small, bounded
-set of templates, hot patterns dominate by count, and rare events surface as
-outliers.
-
-It runs under maven-failsafe in the `verify` phase, **after** the JAR is
-packaged (so `mvn test` stays fast):
-
-```bash
-mvn verify        # packages the JAR, then runs the e2e test
-```
-
-## Todos
-- [x] Initial implementation core and emission
-- [x] Simulator app to try distile
-- [x] Check Java 25 requirement — Java 21 is sufficient
-- [x] Log adapter for Log4j
-
+How distile is built lives in **[DESIGN.md](docs/DESIGN.md)**: the layered architecture, the
+per-line algorithm, terminal handling for `--top`, and the performance, scale, and acceptance
+tests.
 
 ## License
 
