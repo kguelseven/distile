@@ -1,7 +1,7 @@
 package org.korhan.distile.core;
 
 /**
- * The result of feeding one line to {@link DrainTree#add(String)}.
+ * The result of feeding one line to DrainTree#add(String).
  *
  * <p>This is the entire surface the emission layer reacts to per line — it lets
  * emission answer "is this a brand-new template?" and "did this count cross a

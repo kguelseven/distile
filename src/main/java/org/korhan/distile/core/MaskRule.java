@@ -14,12 +14,12 @@ public record MaskRule(Pattern pattern, String replacement) {
     /** The canonical wildcard placeholder used throughout distile. */
     public static final String WILDCARD = "<*>";
 
-    /** Convenience factory: compile {@code regex} and replace matches with {@code <*>}. */
+    /** Convenience factory: compile regex and replace matches with <*>. */
     public static MaskRule of(String regex) {
         return new MaskRule(Pattern.compile(regex), WILDCARD);
     }
 
-    /** Compile {@code regex} with an explicit replacement token. */
+    /** Compile regex with an explicit replacement token. */
     public static MaskRule of(String regex, String replacement) {
         return new MaskRule(Pattern.compile(regex), replacement);
     }

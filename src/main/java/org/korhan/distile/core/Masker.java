@@ -5,47 +5,26 @@ import java.util.List;
 import java.util.regex.Matcher;
 
 /**
- * Replaces known-variable substrings with the wildcard placeholder {@code <*>}
- * <b>before</b> the line reaches the parse tree.
+ * Replaces known-variable substrings (timestamps, IPs, numbers, …) with the
+ * wildcard <*> before a line reaches the parse tree. This is the
+ * highest-leverage step for template quality: without it, a variable near the
+ * start of a line (e.g. a timestamp above all) spawns a fresh tree branch per value
+ * and explodes the template count.
  *
- * <p>This is the single highest-leverage step for template quality. Variables at
- * the <em>start</em> of a line (timestamps above all) would otherwise create a
- * fresh tree branch per value and explode the template count. Masking them first
- * means every line starts with a stable {@code <*>} and collapses correctly.
- * Rule of thumb: <em>the more you mask up front, the less the tree has to do.</em>
+ * <p>Masking replaces in place and never deletes: it may rewrite part of a token
+ * (id=1234 → id=<*>) but never removes or merges tokens, so token
+ * count and position are preserved — which the tree bucketing and similarity
+ * metric both rely on.
  *
- * <p>Masking is <b>replace-in-place, never delete</b>. Rules operate per token,
- * so a token count and every token position are preserved exactly — position is
- * what the tree bucketing and the similarity metric both depend on. A rule may
- * rewrite part of a token (e.g. {@code id=1234} → {@code id=<*>}); it never
- * removes a token or merges two.
- *
- * <h2>Hot-path performance</h2>
- * Masking is the most expensive step in the per-line pipeline (it runs every rule
- * against every token), so two things happen here to keep it cheap:
- * <ul>
- *   <li><b>Matchers are reused, never re-allocated.</b> {@code Pattern.matcher()}
- *       allocates a fresh {@code Matcher} on every call; doing that per
- *       (token × rule) is ~one allocation per rule per token and dominates GC
- *       churn at millions of lines. Instead each thread keeps one reusable
- *       {@code Matcher} per rule and {@code reset()}s it. The {@link ThreadLocal}
- *       keeps {@link #maskToken} safe for library embedders who mask from several
- *       threads; the CLI ingest path is single-threaded and pays only the cheap
- *       thread-local lookup.</li>
- *   <li><b>Necessary-condition gate.</b> A rule can only match a token that
- *       contains the characters the pattern structurally requires (a URL needs
- *       {@code ':'}, IPv4 needs {@code '.'}, the number rule needs a digit, …).
- *       Each default rule declares the single feature it cannot match without;
- *       tokens are scanned once for those features and rules whose required
- *       feature is absent are skipped without running the regex at all. For a
- *       plain word like {@code INFO} or {@code login} this skips <em>every</em>
- *       numeric/structural rule — and real logs are mostly such words. The gate
- *       tests a <em>necessary</em> condition, so it never skips a rule that could
- *       have matched. Custom rules loaded from a file carry no gate (they always
- *       run), preserving their exact behaviour.</li>
- * </ul>
- * All patterns are compiled once at construction. Nothing here recompiles a regex
- * on the per-line hot path.
+ * <p>Masking runs every rule against every token, so it is the pipeline's hottest
+ * step and is kept cheap two ways. (1) Matchers are reused, not re-allocated: each
+ * thread keeps one Matcher per rule (via ThreadLocal, so embedders
+ * can mask from several threads) and reset() s it. (2) A necessary-condition
+ * gate skips a rule when the token lacks a character the pattern requires (a digit
+ * for the number rule, ('.' for IPv4, …); a plain word like INFO
+ * thus skips every numeric rule. The gate tests a necessary condition, so it never
+ * skips a rule that could have matched. All patterns compile once at construction;
+ * nothing recompiles on the hot path. (Custom file-loaded rules carry no gate.)
  */
 public final class Masker {
 
@@ -92,7 +71,7 @@ public final class Masker {
         });
     }
 
-    /** A {@code Masker} loaded with the default, ordered, gated rule set. */
+    /** A Masker loaded with the default, ordered, gated rule set. */
     public static Masker withDefaults() {
         List<GatedRule> gr = defaultGatedRules();
         List<MaskRule> r = new ArrayList<>(gr.size());
@@ -110,7 +89,7 @@ public final class Masker {
 
     /**
      * Mask a token list in place-preserving fashion: same size, same positions,
-     * with variable substrings rewritten to {@code <*>}.
+     * with variable substrings rewritten to <*>.
      */
     public List<String> mask(List<String> tokens) {
         List<String> out = new ArrayList<>(tokens.size());
@@ -175,21 +154,19 @@ public final class Masker {
     }
 
     /**
-     * Default rule set, ordered from most specific to least specific, each paired
-     * with a <b>necessary</b> token feature (see class doc). Order matters:
-     * specific structural tokens (UUID, IP, hex) must be consumed before the
-     * catch-all number rule, or the number rule would shred them into a mess of
-     * partial wildcards.
+     * Default rule set, ordered most specific to least, each paired with a
+     * necessary token feature (see class doc). Order matters: structural tokens
+     * (UUID, IP, hex) must be masked before the catch-all number rule, which would
+     * otherwise shred them into partial wildcards.
      *
-     * <p>Tokenization has already split on whitespace, so a "2021-01-01 12:00:00"
-     * timestamp arrives as two separate tokens — hence separate date and time
-     * rules rather than one datetime rule. Rules are unanchored so they also
-     * catch bracketed/embedded forms like {@code [2021-01-01} and {@code 12:00:00]}.
+     * <p>Whitespace tokenization splits "2021-01-01 12:00:00" into two tokens,
+     * hence separate date and time rules; both are unanchored so they also catch
+     * embedded forms like [2021-01-01 and 12:00:00].
      *
-     * <p>Each gate is the ONE character class the pattern cannot match without.
-     * It must stay a genuine necessary condition — e.g. hex runs and IPv6/UUID/MAC
-     * are NOT gated on a digit because {@code deadbeef}-style all-letter hex is
-     * legal; they gate on structure (length, {@code '-'}, {@code ':'}) instead.
+     * <p>Each gate is the one character class its pattern cannot match without,
+     * and must stay a genuine necessary condition — e.g. hex/IPv6/UUID/MAC gate on
+     * structure (length, '-', ':'), not a digit, since all-letter
+     * hex like deadbeef is legal.
      */
     private static List<GatedRule> defaultGatedRules() {
         List<GatedRule> r = new ArrayList<>();

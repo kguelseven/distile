@@ -12,7 +12,7 @@ import java.util.List;
 /**
  * Human-readable text rendering of emission events.
  *
- * <p>{@link #emit} is synchronized because two threads reach it — the ingest
+ * <p>emit is synchronized because two threads reach it — the ingest
  * thread (new-template / milestone events) and the snapshot timer — and their
  * output must not interleave mid-line.
  */

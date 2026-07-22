@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Masking is the highest-leverage step, so it gets the most scrutiny: each
- * known-variable form must collapse to {@code <*>}, and — critically — masking
+ * known-variable form must collapse to <*>, and — critically — masking
  * must never change a line's token count or shift positions.
  */
 class MaskerTest {

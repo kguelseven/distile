@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Milestone emission fires once per crossed boundary and never per-increment.
- * Drives a real {@link DrainTree} so counts advance the way they do in
+ * Drives a real DrainTree} so counts advance the way they do in
  * production, and captures events with an in-memory reporter.
  */
 class MilestoneTest {

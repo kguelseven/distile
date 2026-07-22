@@ -30,36 +30,29 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * A Log4j2 {@link Appender} that distils the running application's log events into templates
- * <b>in-process</b> — adapter.
+ * A Log4j2 Appender that distils the running application's log events into
+ * templates in-process.
  *
- * <p>This is a pure frontend over distile's I/O-free core: it is <em>just another source of
- * lines</em>, exactly like stdin or a file tailer. It touches nothing in {@code core/} — it
- * reuses the same {@link DrainTree} + {@link EmissionPolicy} + {@link SnapshotScheduler} +
- * {@link Reporter} wiring the CLI uses, and only swaps where the lines come from.
+ * <p>It is just another source of lines over distile's I/O-free core — like stdin
+ * or a file tailer — reusing the same DrainTree + EmissionPolicy +
+ * SnapshotScheduler + Reporter wiring as the CLI, and only changing
+ * where lines come from. It touches nothing in core/.
  *
- * <h2>How an event becomes a line</h2>
- * For a parameterized message ({@code log.info("user {} in from {}", id, ip)}) we take the
- * <em>format</em> and replace each {@code {}} placeholder with the wildcard {@code <*>},
- * producing {@code "user <*> in from <*>"}, then feed that to {@link DrainTree#add(String)}.
- * The pre-placed {@code <*>} tokens survive masking untouched (no mask rule matches
- * {@code <*>}), while any literal tokens in the format (a hardcoded thread name, a level,
- * an embedded timestamp) are still masked exactly as on the stdin path. So the same message
- * clusters to the same template whether it arrives here or as a raw string — one template
- * space, as the core contract requires.
+ * <p>For a parameterized message (log.info("user {} in from {}", id, ip)) it
+ * takes the format and replaces each {} with the wildcard <*>,
+ * feeding "user <*> in from <*>" to DrainTree#add(String). Those
+ * <*> tokens pass through masking untouched while literal tokens are masked
+ * as on the stdin path, so a message clusters to the same template however it
+ * arrives. Only placeholder positions are read (getFormat()), never
+ * argument values — distile counts templates, it does not capture parameter values.
+ * A non-parameterized message (SimpleMessage, or a concatenated string) has
+ * no structure, so it falls back to the fully formatted text and lets masking do the
+ * work, exactly like stdin.
  *
- * <p>We deliberately read only the placeholder <em>positions</em> ({@code getFormat()}), never
- * the argument <em>values</em>: distile counts templates, it does not capture parameter values.
- *
- * <p>Non-parameterized messages (a {@code SimpleMessage}, or a string built by concatenation)
- * carry no structure, so we fall back to the fully formatted text and let masking do all the
- * work — identical to the stdin path.
- *
- * <p><b>Clusters the message, not a rendered log line.</b> The appender sees the message
- * before serialization, so there is no timestamp/level/logger prefix that a {@code PatternLayout}
- * would add to a file. That is the in-process appender's advantage (cleaner signal), and it
- * means its templates match feeding the same <em>message</em> strings via stdin — not tailing
- * the app's fully rendered log file.
+ * <p>It clusters the message, not a rendered log line: the appender sees
+ * before serialization, with no timestamp/level/logger prefix a PatternLayout
+ * would prepend. That is its advantage — cleaner signal — and it means i
+ * match feeding the same messages via stdin, not tailing the rendered log file.
  */
 @Plugin(name = "Distile", category = Core.CATEGORY_NAME, elementType = Appender.ELEMENT_TYPE, printObject = true)
 public final class DistileAppender extends AbstractAppender {
@@ -118,17 +111,17 @@ public final class DistileAppender extends AbstractAppender {
     /**
      * Turn a Log4j2 message into the single line distile should cluster.
      *
-     * <p>We key off whether the message <em>has parameters</em>, not off a concrete type. A real
-     * {@code logger.info("user {} in from {}", id, ip)} call does NOT produce a
-     * {@link ParameterizedMessage}: the default garbage-free {@code ReusableMessageFactory} produces
-     * a {@code ReusableParameterizedMessage}, which is not a subtype of {@code ParameterizedMessage}.
-     * An {@code instanceof ParameterizedMessage} check would miss it and fall back to the rendered
-     * text, so low-cardinality arguments (a username, a path) would each spawn their own template
-     * instead of collapsing to one. {@link Message#getParameters()} is non-empty for every
-     * parameterized message regardless of factory, so it is the reliable signal; for such a message
-     * {@code getFormat()} returns the pattern with {@code {}} placeholders, which {@link #hint} then
-     * turns into wildcards. Messages with no parameters (a {@code SimpleMessage}, or a string built
-     * by concatenation) have nothing structural to read, so we mask the formatted text — the stdin path.
+     * <p>We detect a parameterized message by whether it has parameters, not by
+     * its type. A real logger.info("user {} in from {}", id, ip) does not produce
+     * a ParameterizedMessage — the default garbage-free factory produces a
+     * ReusableParameterizedMessage, which is not a subtype — so an
+     * instanceof check would miss it, fall back to rendered text, and let each
+     * distinct argument spawn its own template. Message#getParameters() is
+     * non-empty for any parameterized message regardless of factory, so it is the
+     * reliable signal; getFormat() then gives the pattern with {}
+     * placeholders for #hint to turn into wildcards. A message with no parameters
+     * (a SimpleMessage, or a concatenated string) has nothing structural to read,
+     * so we mask the formatted text — the stdin path.
      */
     @SuppressWarnings("deprecation") // Message.getFormat(): the pattern is exactly what we want here.
     static String lineFor(Message message) {
@@ -140,9 +133,9 @@ public final class DistileAppender extends AbstractAppender {
     }
 
     /**
-     * Replace each {@code {}} placeholder with the wildcard {@code <*>}. Uses the core's own
-     * {@link MaskRule#WILDCARD} constant so the hint speaks the core's vocabulary rather than a
-     * magic string. Naive by design: an escaped {@code \{}} is rare and treated as a placeholder.
+     * Replace each {} placeholder with the wildcard <*>. Uses the core's own
+     * MaskRule#WILDCARD constant so the hint speaks the core's vocabulary rather than a
+     * magic string. Naive by design: an escaped \{} is rare and treated as a placeholder.
      */
     static String hint(String format) {
         return format == null ? "" : format.replace("{}", MaskRule.WILDCARD);
@@ -166,7 +159,7 @@ public final class DistileAppender extends AbstractAppender {
 
     /**
      * Log4j2 plugin factory. Attributes mirror the CLI flags with the same defaults, so an
-     * appender and {@code distile} on the command line behave identically for the same input.
+     * appender and distile on the command line behave identically for the same input.
      */
     @PluginFactory
     public static DistileAppender createAppender(

@@ -12,7 +12,7 @@ import java.util.List;
  * emission event. No JSON dependency — distile stays JDK-only — so a tiny
  * hand-rolled escaper handles string safety.
  *
- * <p>{@link #emit} is synchronized for the same reason as {@link TextReporter}:
+ * <p>emit is synchronized for the same reason as TextReporter:
  * the ingest thread and snapshot timer both write here.
  */
 public final class JsonReporter implements Reporter {

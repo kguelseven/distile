@@ -1,18 +1,14 @@
 package org.korhan.distile.core;
 
 /**
- * Tuning knobs for the Drain parse tree and matcher. Every field has a
- * documented default; the CLI exposes each as a flag.
+ * Tuning knobs for the Drain parse tree and matcher, the CLI exposes each as a flag.
  *
- * @param depth        maximum parse-tree depth. Level 1 buckets by token count;
- *                     the next {@code depth - 1} levels bucket by leading tokens.
- *                     Deeper = more selective buckets but more branches. Default 4.
- * @param maxChildren  maximum distinct children per internal node before overflow
- *                     is routed into a single {@code <*>} branch. Bounds tree
- *                     fan-out on adversarial/high-cardinality input. Default 100.
- * @param simThreshold minimum similarity (matched positions / token count) for a
- *                     line to join an existing cluster rather than start a new
- *                     one. Default 0.5.
+ * @param depth        maximum parse-tree depth (level 1 buckets by token count,
+ *                     the rest by leading tokens). Default 4.
+ * @param maxChildren  distinct children per node before overflow routes into one
+ *                     <*> branch, bounding fan-out. Default 100.
+ * @param simThreshold minimum similarity (matched positions / token count) to join
+ *                     an existing cluster rather than start a new one. Default 0.5.
  */
 public record DrainConfig(int depth, int maxChildren, double simThreshold) {
 

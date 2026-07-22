@@ -11,12 +11,10 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Emits a Top-N snapshot on a fixed timer, decoupled from the ingest loop.
- *
- * <p>Runs on its own daemon thread and only ever <em>reads</em> a copied, sorted
- * view via {@link DrainTree#snapshotTopN(int)} — it must not block or slow
- * ingestion beyond the brief lock that copy takes. This answers "what dominates
- * right now" as a point-in-time view, independent of new-template events.
+ * Emits a Top-N snapshot on a fixed timer, decoupled from the ingest loop. Runs
+ * on its own daemon thread and only ever reads a copied, sorted view via
+ * DrainTree#snapshotTopN(int), so it never blocks or slows ingestion —
+ * a point-in-time "what dominates right now" view.
  */
 public final class SnapshotScheduler implements AutoCloseable {
 

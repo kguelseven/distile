@@ -16,9 +16,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The core guarantee behind the appender: a message fed through the appender's hinting path
- * lands in the <b>same template</b> as the equivalent message fed as a raw string. One
+ * lands in the same template as the equivalent message fed as a raw string. One
  * template space, regardless of ingestion path — verified at the core level, no Log4j runtime
- * needed beyond building the {@code Message} objects.
+ * needed beyond building the Message objects.
  */
 class AppenderParityTest {
 

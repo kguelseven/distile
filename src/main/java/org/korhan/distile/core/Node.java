@@ -8,10 +8,10 @@ import java.util.Map;
 /**
  * A node in the fixed-depth Drain parse tree.
  *
- * <p>Internal nodes route by string key ({@link #children}); leaf nodes hold the
- * candidate {@link LogCluster}s ({@link #clusters}). A node is used as one or the
- * other depending on its depth — the tree only ever consults {@code clusters} at
- * the leaf level and {@code children} above it, so both fields living on one class
+ * <p>Internal nodes route by string key (children); leaf nodes hold the
+ * candidate LogClusters (clusters). A node is used as one or the
+ * other depending on its depth: the tree only ever consults clusters at
+ * the leaf level and children above it, so both fields living on one class
  * is a size trade-off, not a correctness one.
  */
 final class Node {

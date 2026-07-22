@@ -7,38 +7,24 @@ import java.util.Map;
 
 /**
  * The Drain engine: a fixed-depth parse tree that clusters log lines into
- * templates in near-O(1) per line.
+ * templates in near-O(1) per line. It runs silently on every line (tokenize →
+ * mask → descend → match/merge → count++), never decides what to print,
+ * and hands back a MatchResult for the emission layer to react to.
  *
- * <p><b>This is concern (A): clustering.</b> It runs on every line — tokenize →
- * mask → descend tree → match/merge → {@code count++} — and is silent. It never
- * decides what to print; it only maintains state (templates + counts) and hands
- * back a {@link MatchResult} the emission layer can react to.
+ * <p>Fast because matching only ever compares against the clusters in ONE leaf,
+ * reached via a path bounded by depth with fan-out bounded by
+ * maxChildren (overflow → a single <*> branch): per-line cost is
+ * O(depth + clustersInLeaf), independent of lines seen. Memory is bounded by the
+ * number of distinct templates, not lines (lines are discarded; add no per-line
+ * state).
  *
- * <h2>Why it is fast</h2>
- * Matching a line only ever compares against the clusters in ONE leaf, never all
- * clusters globally. The path to that leaf is bounded by {@code depth}, and node
- * fan-out is bounded by {@code maxChildren} (overflow routes into a single
- * {@code <*>} branch). So per-line cost is O(depth + clustersInLeaf), independent
- * of how many lines have been seen.
+ * <p>The tree buckets first by token count (level 1), then by leading tokens
+ * (levels 2..depth). Level 1's count bucketing means every cluster in a leaf has
+ * the same length, so similarity needs no length handling.
  *
- * <h2>Bounded memory</h2>
- * Lines are consumed and discarded; only clusters (templates + counts) are
- * retained. Memory is bounded by the number of distinct templates, not by the
- * number of lines processed. Do not add any state that grows per line.
- *
- * <h2>Tree shape</h2>
- * <pre>
- *   Root
- *    └─ Level 1: bucket by TOKEN COUNT              key = "6"
- *        └─ Levels 2..depth: bucket by leading token  key = "User"
- *            └─ Leaf: list of LogClusters
- * </pre>
- * Level 1's token-count bucketing guarantees every cluster in a given leaf has
- * the same length, so the similarity metric needs no length handling.
- *
- * <p>Thread-safety: {@link #add} and {@link #snapshotTopN} are synchronized on
- * this instance. Ingestion is single-threaded, so the lock is uncontended except
- * for the brief snapshot copy taken by the emission scheduler.
+ * <p>Thread-safety: add and snapshotTopN synchronize on this
+ * instance; ingestion is single-threaded, so the lock is uncontended except for
+ * the brief snapshot copy taken by the emission scheduler.
  */
 public final class DrainTree {
 
@@ -49,9 +35,9 @@ public final class DrainTree {
     private final Node root = new Node();
     private long nextClusterId = 0;
 
-    // Off-hot-path registry of every cluster, used ONLY for snapshots/final
-    // reports (which are allowed to scan all clusters). Matching never consults
-    // this list — it only touches one leaf's cluster list.
+    // A flat list of every cluster, kept only so snapshots and the final report
+    // can iterate them all. Line matching never reads this (it looks at just one
+    // leaf's clusters) so scanning the whole list here doesn't slow ingestion.
     private final List<LogCluster> allClusters = new ArrayList<>();
 
     public DrainTree(DrainConfig config, Masker masker) {
@@ -90,15 +76,13 @@ public final class DrainTree {
     }
 
     /**
-     * Descend the tree to the leaf that owns this (already masked) line's
-     * clusters, creating internal nodes as needed.
+     * Find the leaf holding this masked line's clusters, creating nodes as needed.
      *
-     * <p>Level 1 buckets by token count and NEVER overflows to {@code <*>} —
-     * collapsing different lengths into one leaf would break the equal-length
-     * invariant the similarity metric relies on. The following token levels DO
-     * honour {@code maxChildren}, routing overflow into a shared {@code <*>}
-     * child so adversarial high-cardinality tokens can't grow the tree without
-     * bound.
+     * <p>Level 1 buckets by token count and never overflows to <*>, because
+     * similarity assumes every cluster in a leaf has the same length, and mixing
+     * lengths would break that. The token levels below it do overflow: once a node
+     * hits maxChildren, extra keys share one <*> child, so a flood of distinct
+     * tokens can't grow the tree without bound.
      */
     private Node descendToLeaf(List<String> tokens) {
         // Level 1: token-count bucket (no overflow — see above).
@@ -117,9 +101,9 @@ public final class DrainTree {
     }
 
     /**
-     * Resolve (or create) the child of {@code parent} for {@code key}. When the
-     * key is unknown and the node is already at {@code maxChildren}, overflow to
-     * a shared {@code <*>} child instead of adding an unbounded new branch.
+     * Resolve (or create) the child of parent for key. When the
+     * key is unknown and the node is already at maxChildren, overflow to
+     * a shared <*> child instead of adding an unbounded new branch.
      */
     private Node childForKey(Node parent, String key, boolean allowOverflow) {
         Map<String, Node> children = parent.children();
@@ -137,7 +121,7 @@ public final class DrainTree {
 
     /**
      * Best cluster in the leaf whose similarity meets the threshold, or null.
-     * Similarity = matching positions / token count, with a {@code <*>} template
+     * Similarity = matching positions / token count, with a <*> template
      * token matching any line token.
      */
     private LogCluster bestMatch(List<LogCluster> candidates, List<String> tokens) {
@@ -145,9 +129,9 @@ public final class DrainTree {
         LogCluster best = null;
         double bestSim = -1.0;
         for (LogCluster c : candidates) {
-            // Same length is guaranteed by Level-1 bucketing, but stay defensive:
-            // the "<*>" overflow branch could, in principle, co-locate lines that
-            // share a count bucket (always same length here) — still equal length.
+            // Level-1 bucketing guarantees this cluster has the same length as the
+            // line, so dividing by size is safe. Empty lines (size 0) count as a
+            // perfect match with each other.
             double sim = size == 0 ? 1.0 : (double) c.countMatchingPositions(tokens) / size;
             if (sim > bestSim) {
                 bestSim = sim;
@@ -158,22 +142,15 @@ public final class DrainTree {
     }
 
     /**
-     * A sorted (count-descending) copy of the top {@code n} clusters. Read-only:
-     * this never mutates tree state. Allowed to scan all clusters — it is a
-     * reporting path, not the per-line hot path.
+     * A sorted (count-descending) copy of the top n clusters. Read-only:
+     * this never mutates tree state. Allowed to scan all clusters (it is a
+     * reporting path, not the per-line hot path).
      */
     public List<LogCluster> snapshotTopN(int n) {
-        // Under the lock, capture each cluster together with its count AT THIS
-        // INSTANT — an O(T) copy, the "brief snapshot copy" the class contract
-        // promises. Two reasons the count is captured here, not read during the
-        // sort:
-        //   1. The O(T log T) sort must NOT hold the lock. For a long-running
-        //      process with many templates, sorting under the lock stalls the
-        //      ingest thread on every snapshot interval.
-        //   2. Sorting on live count() while the ingest thread mutates it would
-        //      feed TimSort an ordering that changes mid-sort, which it detects
-        //      and rejects with IllegalArgumentException. Sorting on the captured
-        //      snapshot value keeps the comparator stable.
+        // Copy each cluster with its count as of right now, then release the lock
+        // before sorting. We sort outside the lock so it never stalls the ingest
+        // thread, and on the captured counts rather than live count() — otherwise
+        // the ingest thread could change a count mid-sort (-> IllegalArgumentException).
         List<Ranked> ranked;
         synchronized (this) {
             ranked = new ArrayList<>(allClusters.size());

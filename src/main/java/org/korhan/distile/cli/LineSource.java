@@ -9,19 +9,16 @@ import java.nio.file.Path;
 import java.util.function.Consumer;
 
 /**
- * Streams raw lines from stdin or a file into a consumer, one at a time.
- *
- * <p>Streaming, never slurping: memory stays bounded by template count, not by
- * input size. In tail mode, a {@code null} from {@code readLine()} means "caught
- * up to EOF" rather than "done" — we sleep briefly and keep reading so appended
- * lines are picked up. Log-rotation / inode-change handling is intentionally out
- * of scope here (that is adapter 2 in the roadmap).
+ * Streams raw lines from stdin or a file to a consumer one at a time.
+ * The memory stays bounded by input size. In tail mode, reaching EOF does not
+ * end the stream; it means we have caught up, so we sleep briefly and keep
+ * reading to pickup lines appended later.
  */
 public final class LineSource {
 
     private static final long TAIL_IDLE_SLEEP_MS = 100;
 
-    private final Path file;   // null => stdin
+    private final Path file;
     private final boolean tail;
 
     private LineSource(Path file, boolean tail) {
@@ -39,11 +36,11 @@ public final class LineSource {
 
     /**
      * Read lines until end-of-input (or, in tail mode, until the thread is
-     * interrupted), handing each to {@code consumer}.
+     * interrupted), handing each to consumer.
      */
     public void forEachLine(Consumer<String> consumer) throws IOException {
         try (BufferedReader reader = openReader()) {
-            boolean tailing = tail && file != null; // tailing stdin is meaningless
+            boolean tailing = tail && file != null;
             while (true) {
                 String line = reader.readLine();
                 if (line != null) {

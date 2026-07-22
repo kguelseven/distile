@@ -27,12 +27,10 @@ import java.util.regex.Pattern;
 
 /**
  * CLI entry point: wires the I/O-free core to an ingest loop and the emission
- * layer. All threading, I/O and flag handling lives here — {@code core/} knows
- * nothing about any of it.
- *
- * <p>The wiring is deliberately one-directional: Masker → DrainTree feeds
- * {@code MatchResult}s to an {@link EmissionPolicy}, and a {@link SnapshotScheduler}
- * independently polls the tree's snapshot view. Core never calls back into either.
+ * layer, holding all threading, I/O and flag handling that core must
+ * stay free of. The wiring is one-directional: Masker → DrainTree feeds
+ * MatchResults to an EmissionPolicy while a SnapshotScheduler
+ * polls the tree's snapshot view; core never calls back into either.
  */
 @Command(
         name = "distile",
@@ -75,9 +73,6 @@ public final class Main implements Callable<Integer> {
             description = "Seconds between Top-N snapshots; 0 disables (default: ${DEFAULT-VALUE}).")
     private long snapshotInterval;
 
-    // New-template emission is on by default; this flag turns it off. Modelled as
-    // an explicit negative flag rather than picocli's negatable option, whose
-    // synthesized --no- form did not reliably flip the value in testing.
     @Option(names = "--no-emit-new", description = "Disable new-template events (on by default).")
     private boolean noEmitNew;
 
@@ -104,7 +99,7 @@ public final class Main implements Callable<Integer> {
         SnapshotScheduler scheduler = new SnapshotScheduler(tree, reporter, topN, snapshotInterval);
         scheduler.start();
 
-        // Final report must fire exactly once — whether the stream ends normally
+        // Final report must fire exactly once: whether the stream ends normally
         // or the user hits Ctrl-C (shutdown hook). Guard against a double fire.
         AtomicBoolean finalized = new AtomicBoolean(false);
         Runnable emitFinal = () -> {
@@ -151,7 +146,6 @@ public final class Main implements Callable<Integer> {
         return new Masker(rules);
     }
 
-    /** Empty array = milestones off. */
     private long[] parseMilestones() {
         if (milestones == null) {
             return new long[0];

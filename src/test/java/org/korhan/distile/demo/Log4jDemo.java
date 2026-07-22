@@ -8,18 +8,18 @@ import java.util.Random;
 import java.util.function.Consumer;
 
 /**
- * Drives distile's in-process Log4j2 appender ({@link org.korhan.distile.log4j.DistileAppender})
- * live — the appender-frontend counterpart to {@link LogSimulator}.
+ * Drives distile's in-process Log4j2 appender (org.korhan.distile.log4j.DistileAppender)
+ * live — the appender-frontend counterpart to LogSimulator.
  *
- * <p>Instead of writing rendered lines, it makes real {@code logger.debug("... {} ...", args)} calls
- * over the same Spring Boot 3 scenario as {@code LogSimulator} (reusing its pools/generators, through
+ * <p>Instead of writing rendered lines, it makes real logger.debug("... {} ...", args) calls
+ * over the same Spring Boot 3 scenario as LogSimulator (reusing its pools/generators, through
  * real framework logger names). The appender reads each message before serialization — no
- * timestamp/level/logger prefix — so parameterized {@code {}} positions become {@code <*>} directly.
+ * timestamp/level/logger prefix — so parameterized {} positions become <*> directly.
  * The HikariCP call reproduces that library's real SLF4J format; the Hibernate SQL line is a pre-built
  * string, exercising the appender's non-parameterized (masking) fallback.
  *
- * <p>Run via {@code ./log4jdemo} (after {@code mvn -q test-compile}): {@code --stdout} prints the
- * report to the console, otherwise it goes to {@code distile-templates.log}. See {@code --help}.
+ * <p>Run via ./log4jdemo (after mvn -q test-compile): --stdout prints the
+ * report to the console, otherwise it goes to distile-templates.log. See --help.
  */
 public final class Log4jDemo {
 

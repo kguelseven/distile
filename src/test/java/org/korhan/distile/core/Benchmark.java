@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * hard performance gate — the only assertion is the template-count bound (a slow
  * machine must not fail the build).
  *
- * <p>Also runnable as a {@code main} for ad-hoc measurement.
+ * <p>Also runnable as a main for ad-hoc measurement.
  */
 class Benchmark {
 

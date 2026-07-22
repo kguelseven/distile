@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Tree behaviour tested with an <b>empty</b> masker so masking never interferes:
+ * Tree behaviour tested with an empty masker so masking never interferes:
  * these assertions are purely about bucketing, similarity-driven merge, and
  * fan-out bounding.
  */

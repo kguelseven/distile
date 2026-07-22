@@ -18,9 +18,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Drives the real appender: build it through its {@code @PluginFactory}, push {@link LogEvent}s
- * at {@link DistileAppender#append}, and confirm the core collapses them as expected — including
- * that a concatenated ({@code SimpleMessage}) event joins the same template as the parameterized
+ * Drives the real appender: build it through its @PluginFactory, push LogEvents
+ * at DistileAppender#append, and confirm the core collapses them as expected — including
+ * that a concatenated (SimpleMessage) event joins the same template as the parameterized
  * ones. Output is routed to a temp file so nothing prints during the build.
  */
 class DistileAppenderIntegrationTest {

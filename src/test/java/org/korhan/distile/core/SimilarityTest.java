@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * The similarity metric: matching positions / token count, where a template
- * {@code <*>} matches any line token (wildcard matches everything).
+ * <*> matches any line token (wildcard matches everything).
  */
 class SimilarityTest {
 

@@ -12,9 +12,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Scale + snapshot-concurrency guard for the high-cardinality, long-running case
- * the throughput {@link Benchmark} deliberately does not exercise.
+ * the throughput Benchmark deliberately does not exercise.
  *
- * <p>{@code Benchmark} feeds 8 templates that collapse to ~7 clusters, so it never
+ * <p>Benchmark feeds 8 templates that collapse to ~7 clusters, so it never
  * builds a deep/wide tree, never creates many clusters, and never sorts a large
  * snapshot. This test does the opposite: it generates thousands of structurally
  * distinct templates (distinct tokens in tree-branching positions, so they land in

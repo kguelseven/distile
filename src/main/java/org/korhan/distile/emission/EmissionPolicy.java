@@ -13,13 +13,12 @@ import java.util.Map;
  * Per-line emission triggers: fire on a brand-new template, and/or when a
  * cluster's count crosses a milestone.
  *
- * <p>This is concern (B). It only <em>reads</em> {@link MatchResult} (which core
- * hands back per line); it never mutates clustering state. Its own small state —
- * the last milestone reported for each cluster — lives here, keyed by cluster id,
- * NOT on {@link LogCluster}.
+ * <p>It only reads the MatchResult core hands back per line and
+ * never touches clustering state. Its own small state — the last milestone
+ * reported per cluster — lives here, keyed by cluster id, not on LogCluster.
  *
- * <p>Not thread-safe: designed to be driven by the single ingest thread. The
- * interval snapshot is a separate concern ({@link SnapshotScheduler}).
+ * <p>Not thread-safe: driven by the single ingest thread. The interval snapshot
+ * is a separate concern (SnapshotScheduler).
  */
 public final class EmissionPolicy {
 
@@ -91,7 +90,7 @@ public final class EmissionPolicy {
 
     /**
      * Build the end-of-stream report event: all clusters sorted by count, plus
-     * the outlier subset (count &le; {@code outlierMax}).
+     * the outlier subset (count &le; outlierMax).
      */
     public static EmissionEvent.Final buildFinal(List<LogCluster> allSorted, int total, long outlierMax) {
         List<LogCluster> outliers = allSorted.stream()

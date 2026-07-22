@@ -5,10 +5,10 @@ import java.util.List;
 /**
  * One learned template plus how many lines have matched it.
  *
- * <p>The {@code template} is a list of tokens where variable positions hold the
- * wildcard {@code <*>}. It only ever loses specificity over time: when a matching
- * line disagrees at some position, that position is generalised to {@code <*>} and
- * never goes back. {@code count} is the only mutable state a cluster carries —
+ * <p>The template is a list of tokens where variable positions hold the
+ * wildcard <*>. It only ever loses specificity over time: when a matching
+ * line disagrees at some position, that position is generalised to <*> and
+ * never goes back. count is the only mutable state a cluster carries:
  * emission-side concerns (e.g. which milestone was last reported) live in the
  * emission layer, never here.
  */
@@ -53,12 +53,10 @@ public final class LogCluster {
     }
 
     /**
-     * Count how many positions of this template match the given line tokens.
-     * A {@code <*>} template token matches any line token (wildcard matches
-     * everything); a concrete token matches only an identical string.
-     *
-     * <p>Caller guarantees {@code tokens.size() == size()} — Level-1 token-count
-     * bucketing makes this invariant hold, so no length handling is needed here.
+     * Count how many positions match: a <*> template token matches any line
+     * token, a concrete token matches only an equal string. The caller passes a
+     * line of the same length (guaranteed by token-count bucketing), so this
+     * doesn't check lengths.
      */
     int countMatchingPositions(List<String> tokens) {
         int matches = 0;
@@ -73,7 +71,7 @@ public final class LogCluster {
 
     /**
      * Merge a matching line into this template: any position where the template
-     * token differs from the line token is generalised to {@code <*>}, then the
+     * token differs from the line token is generalised to <*>, then the
      * count is incremented. Returns the new count.
      */
     long merge(List<String> tokens) {

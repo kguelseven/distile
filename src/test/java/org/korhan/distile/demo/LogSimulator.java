@@ -11,16 +11,16 @@ import java.util.function.Function;
  * A tiny, dependency-free log generator for exercising distile live.
  *
  * <p>Emits the console output of a busy <b>Spring Boot 3.x</b> web service in the default Logback
- * layout ({@code <ISO-ts> <LEVEL> <PID> --- [<thread>] <logger> : <message>}) — Spring MVC, Hibernate
+ * layout (<ISO-ts> <LEVEL> <PID> --- [<thread>] <logger> : <message>) — Spring MVC, Hibernate
  * SQL, HikariCP, Tomcat startup, and a few app loggers — so the lines look like what a Java developer
  * actually sees. A handful of "hot" templates dominate; a few rare outliers (startup, pool
- * exhaustion) surface in the outlier view on a short {@code --count} run. Run via {@code ./logsim}
- * (or Java 21 source-launch, no build) and pipe into distile; see {@code --help}.
+ * exhaustion) surface in the outlier view on a short --count run. Run via ./logsim
+ * (or Java 21 source-launch, no build) and pipe into distile; see --help.
  *
- * <p>Use {@code --depth 9}: the fixed 7-token prefix pushes the real message to token 7, so distile
+ * <p>Use --depth 9: the fixed 7-token prefix pushes the real message to token 7, so distile
  * needs a deeper tree to separate events by message rather than by (level, thread, logger).
  *
- * <p>Not a test (no {@code @Test} methods, off the surefire pattern) — a hand-run tool. Thread names
+ * <p>Not a test (no @Test methods, off the surefire pattern) — a hand-run tool. Thread names
  * avoid interior spaces (HikariCP's housekeeper is hyphenated) because naive whitespace tokenization
  * would split the space-padded thread field that real Spring Boot logs use.
  */
