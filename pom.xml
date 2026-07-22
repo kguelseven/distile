@@ -16,6 +16,7 @@
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <picocli.version>4.7.6</picocli.version>
+        <jline.version>3.27.1</jline.version>
         <log4j.version>2.25.3</log4j.version>
         <junit.version>5.11.4</junit.version>
     </properties>
@@ -25,6 +26,16 @@
             <groupId>info.picocli</groupId>
             <artifactId>picocli</artifactId>
             <version>${picocli.version}</version>
+        </dependency>
+
+        <!-- JLine 3 powers the live top full-screen view (the `top` option): terminal-size
+             detection and flicker-free diff-based redraws (org.jline.utils.Display). Compile
+             scope so it is shaded into distile.jar. On POSIX it attaches to the controlling
+             terminal, so the view works even when stdin is the log pipe. -->
+        <dependency>
+            <groupId>org.jline</groupId>
+            <artifactId>jline</artifactId>
+            <version>${jline.version}</version>
         </dependency>
 
         <!-- Log4j2 appender adapter. 'provided': the appender compiles/tests against it, but
@@ -113,6 +124,12 @@
                                         implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>org.korhan.distile.cli.Main</mainClass>
                                 </transformer>
+                                <!-- JLine selects its terminal provider via ServiceLoader
+                                     (META-INF/services/...). Merge those service files instead of
+                                     letting shade drop them, or a shaded JLine can only find a
+                                     dumb terminal and the live top view silently degrades. -->
+                                <transformer
+                                        implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>
                         </configuration>
                     </execution>

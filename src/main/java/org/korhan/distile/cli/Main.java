@@ -10,10 +10,13 @@ import org.korhan.distile.emission.SnapshotScheduler;
 import org.korhan.distile.report.JsonReporter;
 import org.korhan.distile.report.Reporter;
 import org.korhan.distile.report.TextReporter;
+import org.korhan.distile.report.TopReporter;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
+import picocli.CommandLine.Spec;
+import picocli.CommandLine.Model.CommandSpec;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 /**
@@ -69,9 +73,9 @@ public final class Main implements Callable<Integer> {
             description = "How many templates to show in snapshots (default: ${DEFAULT-VALUE}).")
     private int topN;
 
-    @Option(names = "--snapshot-interval", defaultValue = "5",
-            description = "Seconds between Top-N snapshots; 0 disables (default: ${DEFAULT-VALUE}).")
-    private long snapshotInterval;
+    @Option(names = "--snapshot-interval",
+            description = "Seconds between Top-N snapshots; 0 disables. Default 5, or 2 with --top.")
+    private Long snapshotInterval;
 
     @Option(names = "--no-emit-new", description = "Disable new-template events (on by default).")
     private boolean noEmitNew;
@@ -87,16 +91,42 @@ public final class Main implements Callable<Integer> {
     @Option(names = "--json", description = "Emit JSONL instead of text.")
     private boolean json;
 
+    @Option(names = "--top",
+            description = "Live full-screen top-like view (refreshes in place; Ctrl-C to exit).")
+    private boolean top;
+
+    @Spec
+    private CommandSpec spec;
+
     @Override
     public Integer call() throws Exception {
+        if (top && json) {
+            throw new CommandLine.ParameterException(spec.commandLine(),
+                    "--top and --json are mutually exclusive.");
+        }
+
         Masker masker = buildMasker();
         DrainConfig config = new DrainConfig(depth, maxChildren, simThreshold);
         DrainTree tree = new DrainTree(config, masker);
 
-        Reporter reporter = json ? new JsonReporter(System.out) : new TextReporter(System.out);
+        // --snapshot-interval defaults to 5, or 2 in top mode (a live view wants a snappier
+        // refresh). In top mode a disabled (<=0) interval would leave the screen blank, so
+        // guard it back to the top-mode default.
+        long interval = snapshotInterval != null ? snapshotInterval : (top ? 2 : 5);
+        if (top && interval <= 0) {
+            interval = 2;
+        }
+
+        Reporter reporter = top ? new TopReporter(interval)
+                : json ? new JsonReporter(System.out)
+                : new TextReporter(System.out);
         EmissionPolicy policy = EmissionPolicy.of(!noEmitNew, parseMilestones(), reporter);
 
-        SnapshotScheduler scheduler = new SnapshotScheduler(tree, reporter, topN, snapshotInterval);
+        // Lines fed to the core so far — an ingest concern, so it lives here, not in the tree.
+        // Single writer (ingest thread), single reader (snapshot thread): AtomicLong suffices.
+        AtomicLong linesSeen = new AtomicLong();
+        SnapshotScheduler scheduler =
+                new SnapshotScheduler(tree, reporter, topN, interval, linesSeen::get);
         scheduler.start();
 
         // Final report must fire exactly once: whether the stream ends normally
@@ -114,7 +144,10 @@ public final class Main implements Callable<Integer> {
 
         LineSource source = resolveSource();
         try {
-            source.forEachLine(line -> policy.onMatch(tree.add(line)));
+            source.forEachLine(line -> {
+                linesSeen.incrementAndGet();
+                policy.onMatch(tree.add(line));
+            });
         } finally {
             emitFinal.run();
         }

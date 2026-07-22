@@ -35,8 +35,13 @@ public sealed interface EmissionEvent
      * taken (at, captured by the scheduler at tick time, not when it is later rendered) so
      * a snapshot in a scrolling stream is timestamped like a log line. Formatting is the reporter's
      * job. The event holds the raw instant, not a formatted string.
+     *
+     * <p>totalLines is the count of raw lines fed to the core so far (an ingest-side counter,
+     * captured at tick time). The live top view derives throughput (lines/sec) from the delta
+     * between successive snapshots; scrolling reporters may ignore it.
      */
-    record Snapshot(Instant at, List<LogCluster> topN, int totalTemplates) implements EmissionEvent {
+    record Snapshot(Instant at, List<LogCluster> topN, int totalTemplates, long totalLines)
+            implements EmissionEvent {
     }
 
     /**

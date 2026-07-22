@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 
 /**
  * Emits a Top-N snapshot on a fixed timer, decoupled from the ingest loop. Runs
@@ -22,13 +23,19 @@ public final class SnapshotScheduler implements AutoCloseable {
     private final Reporter reporter;
     private final int topN;
     private final long intervalSeconds;
+    // Ingest-side line counter (lines fed to the core so far). Read at tick time and carried on
+    // the Snapshot event so reporters can show throughput; kept out of core, which counts
+    // templates, not lines.
+    private final LongSupplier totalLines;
     private ScheduledExecutorService executor;
 
-    public SnapshotScheduler(DrainTree tree, Reporter reporter, int topN, long intervalSeconds) {
+    public SnapshotScheduler(DrainTree tree, Reporter reporter, int topN, long intervalSeconds,
+                             LongSupplier totalLines) {
         this.tree = tree;
         this.reporter = reporter;
         this.topN = topN;
         this.intervalSeconds = intervalSeconds;
+        this.totalLines = totalLines;
     }
 
     /** Start the timer. A non-positive interval disables snapshots entirely. */
@@ -50,7 +57,8 @@ public final class SnapshotScheduler implements AutoCloseable {
         try {
             List<LogCluster> top = tree.snapshotTopN(topN);
             if (!top.isEmpty()) {
-                reporter.emit(new EmissionEvent.Snapshot(Instant.now(), top, tree.clusterCount()));
+                reporter.emit(new EmissionEvent.Snapshot(
+                        Instant.now(), top, tree.clusterCount(), totalLines.getAsLong()));
             }
         } catch (RuntimeException ignored) {
             // intentionally ignored — best-effort periodic view

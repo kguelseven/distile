@@ -51,8 +51,9 @@ distile [FILE] [options]
   -f, --file <path>          read a file (or pass it positionally); default: stdin
       --tail                 keep reading appended lines (like tail -f)
       --json                 emit JSONL instead of text
+      --top                  live full-screen top-like view (refreshes in place)
       --top-n <n>            templates shown per snapshot        (default 10)
-      --snapshot-interval <s> seconds between Top-N snapshots; 0 = off (default 5)
+      --snapshot-interval <s> seconds between Top-N snapshots; 0 = off (default 5, or 2 with --top)
       --no-emit-new          don't print an event on each new template
       --milestones [set]     emit on count milestones; no value = 1,10,100,…
       --outlier-max <n>      count <= n counts as an outlier      (default 2)
@@ -66,6 +67,15 @@ distile [FILE] [options]
 **Emission** runs two layers by default: a `[NEW]` event when a template first
 appears, and a Top-N snapshot every 5s. On stream end (or Ctrl-C) it prints the
 full ranked list plus outliers.
+
+**`--top`** replaces the scrolling output with a live, full-screen `top`-like view
+that refreshes in place (every 2s by default): a header bar (clock, running time,
+lines + throughput, template count + new-this-frame) above the ranked table, with
+rows that are new or growing highlighted. Works over a pipe
+(`tail -f app.log | distile --top`) or a file (`distile --top --tail app.log`);
+Ctrl-C exits. When output is not an interactive
+terminal (e.g. redirected to a file) it falls back to plain text. Log rotation
+following is not yet handled.
 
 ## How it works
 

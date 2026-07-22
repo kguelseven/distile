@@ -45,6 +45,7 @@ public final class JsonReporter implements Reporter {
                 sb.append("{\"event\":\"snapshot\",\"at\":\"")
                         .append(DateTimeFormatter.ISO_INSTANT.format(e.at()))
                         .append("\",\"total\":").append(e.totalTemplates())
+                        .append(",\"lines\":").append(e.totalLines())
                         .append(",\"templates\":");
                 array(sb, e.topN());
                 sb.append('}');

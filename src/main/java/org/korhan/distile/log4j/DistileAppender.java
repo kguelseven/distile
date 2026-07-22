@@ -28,6 +28,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * A Log4j2 Appender that distils the running application's log events into
@@ -68,9 +69,13 @@ public final class DistileAppender extends AbstractAppender {
     // The final report must fire exactly once, even if stop() is called more than once.
     private final AtomicBoolean finalized = new AtomicBoolean(false);
 
+    // Lines fed to the core so far, surfaced on Snapshot events (see SnapshotScheduler). Shared
+    // with the scheduler, which reads it via a supplier at tick time.
+    private final AtomicLong linesSeen;
+
     private DistileAppender(String name, Filter filter, DrainTree tree, EmissionPolicy policy,
                             SnapshotScheduler scheduler, Reporter reporter, PrintStream out,
-                            boolean ownsOut, long outlierMax) {
+                            boolean ownsOut, long outlierMax, AtomicLong linesSeen) {
         // No layout: we consume the LogEvent's message directly and never serialize it.
         super(name, filter, null, /*ignoreExceptions=*/true, Property.EMPTY_ARRAY);
         this.tree = tree;
@@ -80,6 +85,7 @@ public final class DistileAppender extends AbstractAppender {
         this.out = out;
         this.ownsOut = ownsOut;
         this.outlierMax = outlierMax;
+        this.linesSeen = linesSeen;
     }
 
     @Override
@@ -100,6 +106,7 @@ public final class DistileAppender extends AbstractAppender {
     @Override
     public void append(LogEvent event) {
         try {
+            linesSeen.incrementAndGet();
             policy.onMatch(tree.add(lineFor(event.getMessage())));
         } catch (RuntimeException e) {
             // Distile must never disrupt the host application's own logging. Route the failure
@@ -199,8 +206,11 @@ public final class DistileAppender extends AbstractAppender {
 
         Reporter reporter = json ? new JsonReporter(out) : new TextReporter(out);
         EmissionPolicy policy = EmissionPolicy.of(emitNew, new long[0], reporter);
-        SnapshotScheduler scheduler = new SnapshotScheduler(tree, reporter, topN, snapshotInterval);
+        AtomicLong linesSeen = new AtomicLong();
+        SnapshotScheduler scheduler =
+                new SnapshotScheduler(tree, reporter, topN, snapshotInterval, linesSeen::get);
 
-        return new DistileAppender(name, filter, tree, policy, scheduler, reporter, out, ownsOut, outlierMax);
+        return new DistileAppender(
+                name, filter, tree, policy, scheduler, reporter, out, ownsOut, outlierMax, linesSeen);
     }
 }

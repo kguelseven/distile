@@ -17,4 +17,6 @@ if [ ! -f "$JAR" ]; then
   exit 1
 fi
 
-exec java -jar "$JAR" "$@"
+# --enable-native-access silences JDK warnings from JLine's native terminal provider
+# (used by the live --top view). Harmless for the non-top paths.
+exec java --enable-native-access=ALL-UNNAMED -jar "$JAR" "$@"
