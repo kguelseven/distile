@@ -69,7 +69,7 @@ class ScaleAndSnapshotTest {
             assertTrue(top.get(i - 1).count() >= top.get(i).count(),
                     "snapshot not sorted by count descending");
         }
-        assertTrue(tree.snapshotTopN(-1).size() == clusters,
+        assertTrue(tree.snapshotAll().size() == clusters,
                 "full snapshot size should equal cluster count");
     }
 

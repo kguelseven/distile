@@ -105,7 +105,7 @@ public final class Main implements Callable<Integer> {
         Runnable emitFinal = () -> {
             if (finalized.compareAndSet(false, true)) {
                 scheduler.close();
-                List<LogCluster> all = tree.snapshotTopN(-1); // -1 => all, sorted
+                List<LogCluster> all = tree.snapshotAll();
                 reporter.emit(EmissionPolicy.buildFinal(all, tree.clusterCount(), outlierMax));
                 reporter.flush();
             }

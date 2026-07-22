@@ -54,12 +54,6 @@ public final class DrainTree {
     public synchronized MatchResult add(String line) {
         List<String> masked = masker.mask(tokenizer.tokenize(line));
 
-        // A blank line tokenizes to nothing. Bucket it under an explicit empty
-        // key so it clusters with other blanks instead of blowing up descent.
-        if (masked.isEmpty()) {
-            masked = List.of();
-        }
-
         Node leaf = descendToLeaf(masked);
         List<LogCluster> candidates = leaf.clusters();
 
@@ -142,11 +136,24 @@ public final class DrainTree {
     }
 
     /**
-     * A sorted (count-descending) copy of the top n clusters. Read-only:
-     * this never mutates tree state. Allowed to scan all clusters (it is a
-     * reporting path, not the per-line hot path).
+     * A sorted (count-descending) copy of the top n clusters (n >= 0). Read-only:
+     * this never mutates tree state.
      */
     public List<LogCluster> snapshotTopN(int n) {
+        List<LogCluster> all = sortedSnapshot();
+        int limit = Math.min(Math.max(n, 0), all.size());
+        return new ArrayList<>(all.subList(0, limit));
+    }
+
+    /**
+     * A sorted (count-descending) copy of every cluster. Read-only. Allowed to
+     * scan all clusters (it is a reporting path, not the per-line hot path).
+     */
+    public List<LogCluster> snapshotAll() {
+        return sortedSnapshot();
+    }
+
+    private List<LogCluster> sortedSnapshot() {
         // Copy each cluster with its count as of right now, then release the lock
         // before sorting. We sort outside the lock so it never stalls the ingest
         // thread, and on the captured counts rather than live count() — otherwise
@@ -161,10 +168,9 @@ public final class DrainTree {
         ranked.sort(Comparator.comparingLong((Ranked r) -> r.count).reversed()
                 .thenComparingLong(r -> r.cluster.clusterId()));
 
-        int limit = (n >= 0 && n < ranked.size()) ? n : ranked.size();
-        List<LogCluster> out = new ArrayList<>(limit);
-        for (int i = 0; i < limit; i++) {
-            out.add(ranked.get(i).cluster);
+        List<LogCluster> out = new ArrayList<>(ranked.size());
+        for (Ranked r : ranked) {
+            out.add(r.cluster);
         }
         return out;
     }

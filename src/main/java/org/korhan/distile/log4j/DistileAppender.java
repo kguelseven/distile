@@ -144,7 +144,7 @@ public final class DistileAppender extends AbstractAppender {
     private void emitFinal() {
         if (finalized.compareAndSet(false, true)) {
             scheduler.close();
-            reporter.emit(EmissionPolicy.buildFinal(tree.snapshotTopN(-1), tree.clusterCount(), outlierMax));
+            reporter.emit(EmissionPolicy.buildFinal(tree.snapshotAll(), tree.clusterCount(), outlierMax));
             reporter.flush();
             if (ownsOut) {
                 out.close();
