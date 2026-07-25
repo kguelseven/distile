@@ -42,7 +42,24 @@ Under the hood, distile is a from-scratch Java implementation of the
 [Drain](https://ieeexplore.ieee.org/document/8029742) algorithm, a streaming log-template extractor. Everything stays on your machine and in
 memory (just the templates and their counts).
 
-## Quick start
+## Install
+
+```bash
+brew tap kguelseven/distile https://github.com/kguelseven/distile
+brew install distile
+```
+
+The tap URL is needed because the formula ships in this repo rather than a separate
+`homebrew-distile` tap. Homebrew pulls in its own JDK, so nothing else is required.
+
+Or grab `distile-<version>.jar` from the [latest release](https://github.com/kguelseven/distile/releases/latest)
+and run `java -jar distile.jar` (Java 21+).
+
+```bash
+tail -f app.log | distile         # or: distile -f app.log
+```
+
+### From source
 
 Requires **Java 21** and **Maven**.
 
@@ -50,6 +67,9 @@ Requires **Java 21** and **Maven**.
 mvn package                       # builds target/distile.jar
 tail -f app.log | ./distile       # or: ./distile -f app.log
 ```
+
+The `./distile` launcher finds the JAR next to itself or in `target/`, so it works from a
+clone and from an unpacked release tarball alike.
 
 ## Usage
 
@@ -120,8 +140,14 @@ a tidy summary; it just lumps the DispatcherServlet lines together. See
 ## Log4j2 appender
 
 For your own JVM apps you can skip the file round-trip and plug distile straight into
-Log4j2, so log events are distilled **in-process**. Add distile as a dependency, then
-register the appender in your `log4j2.xml`:
+Log4j2, so log events are distilled **in-process**.
+
+distile isn't on Maven Central yet, so the appender is build-from-source for now: run
+`mvn install` in a clone to put `org.korhan:distile` in your local repository, then depend
+on it. Note the JAR is shaded (picocli and JLine are bundled), so it's a CLI artifact
+first and a library second.
+
+Register the appender in your `log4j2.xml`:
 
 ```xml
 <Configuration>

@@ -11,9 +11,13 @@ while [ -h "$SOURCE" ]; do
 done
 DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
 
-JAR="$DIR/target/distile.jar"
-if [ ! -f "$JAR" ]; then
-  echo "distile: fat JAR not found at $JAR — run 'mvn package' first." >&2
+# Release layout: JAR next to this script. Dev layout: target/distile.jar.
+if [ -f "$DIR/distile.jar" ]; then
+  JAR="$DIR/distile.jar"
+elif [ -f "$DIR/target/distile.jar" ]; then
+  JAR="$DIR/target/distile.jar"
+else
+  echo "distile: distile.jar not found next to script or in target/ — run 'mvn package' first." >&2
   exit 1
 fi
 

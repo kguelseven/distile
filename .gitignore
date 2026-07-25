@@ -1,0 +1,6 @@
+target/
+*.class
+CLAUDE.md
+distile-templates.log
+.idea/
+.DS_Store

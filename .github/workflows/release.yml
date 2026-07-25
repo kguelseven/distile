@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write   # create the Release, and push the formula bump to main
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the formula bump step needs main, not just the tag
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      # The tag is the single source of truth for the version: v0.1.0 -> 0.1.0.
+      - name: Derive version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      # -Drevision overrides the pom's 0.0.0-dev default, which shade stamps into the jar
+      # manifest as Implementation-Version. `verify` also runs the e2e IT against that jar.
+      - name: Build and test
+        run: mvn -B -Drevision="$VERSION" clean verify
+
+      # The tarball's top-level distile-$VERSION/ directory is what Homebrew strips on
+      # unpack, which is why `libexec.install "distile.jar"` resolves in the formula.
+      # The bare jar ships alongside it for direct download and the Log4j2 appender path.
+      - name: Stage release assets
+        run: |
+          STAGE="distile-$VERSION"
+          mkdir -p "$STAGE"
+          cp target/distile.jar distile README.md LICENSE "$STAGE/"
+          tar -czf "distile-$VERSION.tar.gz" "$STAGE"
+          cp target/distile.jar "distile-$VERSION.jar"
+          echo "TARBALL_SHA256=$(sha256sum "distile-$VERSION.tar.gz" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "distile $VERSION" \
+            --generate-notes \
+            "distile-$VERSION.tar.gz" "distile-$VERSION.jar"
+
+      # Homebrew reads the formula from the default branch, so point it at the release we
+      # just published. The workflow runs on a detached tag ref, hence the explicit
+      # checkout of main; the staged assets are untracked and survive it.
+      - name: Bump Homebrew formula on main
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          sed -i -E "s|^  url .*|  url \"https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/distile-${VERSION}.tar.gz\"|" Formula/distile.rb
+          sed -i -E "s|^  sha256 .*|  sha256 \"${TARBALL_SHA256}\"|" Formula/distile.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "distile $VERSION [skip ci]"
+          git push origin main

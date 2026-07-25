@@ -39,7 +39,7 @@ import java.util.regex.Pattern;
 @Command(
         name = "distile",
         mixinStandardHelpOptions = true,
-        version = "distile 0.1.0",
+        versionProvider = Main.ManifestVersion.class,
         description = "Distil noisy log streams into frequency-ranked templates (Drain algorithm).")
 public final class Main implements Callable<Integer> {
 
@@ -197,5 +197,13 @@ public final class Main implements Callable<Integer> {
     public static void main(String[] args) {
         int exit = new CommandLine(new Main()).execute(args);
         System.exit(exit);
+    }
+
+    static final class ManifestVersion implements CommandLine.IVersionProvider {
+        @Override
+        public String[] getVersion() {
+            String v = Main.class.getPackage().getImplementationVersion();
+            return new String[]{"distile " + (v != null ? v : "dev")};
+        }
     }
 }

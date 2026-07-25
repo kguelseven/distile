@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Temurin 21 matches maven.compiler.release, so CI builds on the oldest JDK
+      # distile claims to support rather than whatever the runner ships by default.
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      # `verify`, not `test`: failsafe runs DistilesSpringBootStreamIT after packaging,
+      # which spawns the real target/distile.jar. That is the only check that exercises
+      # the artifact we actually ship.
+      - name: Build and test
+        run: mvn -B verify
