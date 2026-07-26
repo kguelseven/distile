@@ -14,8 +14,8 @@
 class Distile < Formula
   desc "Streaming log template extractor (Drain algorithm) - local, offline, dev-time"
   homepage "https://github.com/kguelseven/distile"
-  url "https://github.com/kguelseven/distile/releases/download/v0.1.0/distile-0.1.0.tar.gz"
-  sha256 "405acf0fe524a59a2389c9b7d4b96d36958a0e3cf2287fa78cbd9f920a95afb4"
+  url "https://github.com/kguelseven/distile/releases/download/v0.1.1/distile-0.1.1.tar.gz"
+  sha256 "acaa9e5ceb3319884fe0cf21385856797ddc55a907b707b4b0d0bd2415857d68"
   license "MIT"
 
   # distile targets Java 21 (maven.compiler.release), but runs on anything newer.
