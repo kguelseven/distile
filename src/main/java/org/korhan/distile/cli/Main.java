@@ -88,6 +88,14 @@ public final class Main implements Callable<Integer> {
             description = "Templates with count <= this are shown as outliers in the final report (default: ${DEFAULT-VALUE}).")
     private long outlierMax;
 
+    @Option(names = "--no-join-traces",
+            description = "Treat every line of a Java stack trace as its own record (joining is on by default).")
+    private boolean noJoinTraces;
+
+    @Option(names = "--trace-frames", defaultValue = "1",
+            description = "Stack-trace lines kept after the exception header; 0 keeps none (default: ${DEFAULT-VALUE}).")
+    private int traceFrames;
+
     @Option(names = "--json", description = "Emit JSONL instead of text.")
     private boolean json;
 
@@ -142,16 +150,46 @@ public final class Main implements Callable<Integer> {
         };
         Runtime.getRuntime().addShutdownHook(new Thread(emitFinal, "distile-final"));
 
+        // The core sees one record per call; a joined stack trace is one record spanning
+        // several input lines. linesSeen is counted outside the joiner so snapshots keep
+        // reporting input volume rather than record count.
+        LineSink ingest = record -> policy.onMatch(tree.add(record));
+        LineSink sink = noJoinTraces ? ingest : new StackTraceJoiner(ingest, traceFrames);
+        LineSink counted = new CountingSink(sink, linesSeen);
+
         LineSource source = resolveSource();
         try {
-            source.forEachLine(line -> {
-                linesSeen.incrementAndGet();
-                policy.onMatch(tree.add(line));
-            });
+            source.forEachLine(counted);
         } finally {
+            // A record still being assembled when we get here (Ctrl-C mid-trace) is lost.
+            // One record, on the way out — not worth coordinating with the shutdown hook.
             emitFinal.run();
         }
         return 0;
+    }
+
+    /** Counts raw input lines on their way to the real sink, delegating everything else. */
+    private record CountingSink(LineSink delegate, AtomicLong lines) implements LineSink {
+        @Override
+        public void accept(String line) {
+            lines.incrementAndGet();
+            delegate.accept(line);
+        }
+
+        @Override
+        public boolean hasPending() {
+            return delegate.hasPending();
+        }
+
+        @Override
+        public void onIdle() {
+            delegate.onIdle();
+        }
+
+        @Override
+        public void onEnd() {
+            delegate.onEnd();
+        }
     }
 
     private LineSource resolveSource() {

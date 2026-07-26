@@ -6,8 +6,9 @@ terminal handling for the live view, and the test strategy.
 
 ## Architecture
 
-Three layers with a strict one-way dependency. Adding a new way to feed distile lines never
-touches the core. The Log4j2 appender was added without changing a single core file.
+Three layers with a strict one-way dependency, plus the adapters that feed them. Adding a new
+way to feed distile lines never touches the core. The Log4j2 appender was added without
+changing a single core file.
 
 - **`core/`** holds the I/O-free library: `Tokenizer`, `Masker`, `DrainTree`, `LogCluster`.
   It runs the clustering on every line and keeps the state (templates and counts). It never
@@ -58,10 +59,49 @@ separate them by message. At that depth it even splits requests by HTTP method. 
 together. Going much deeper over-splits. Framework logs simply need a deeper tree than simple
 ones.
 
-One related Drain trait is built in: variables in *leading* (tree-routing) tokens split into
-separate templates unless masked. And the same event with an optional trailing clause lands
-in a different token-count bucket and won't merge. Deleting tokens to fix that would break
-position-based matching for everything else, so distile accepts it for now.
+Two related Drain traits follow from the same design. Variables in *leading* (tree-routing)
+tokens split into separate templates unless masking catches them first. And the same event
+with an optional trailing clause lands in a different token-count bucket, so it never merges.
+Deleting tokens to fix that would break position-based matching everywhere else, so distile
+accepts it for now.
+
+### Multi-line records: Java stack traces
+
+One log event can span dozens of physical lines. Unjoined, every frame is its own record and
+therefore its own template. One exception logged twice produced eight templates, its frames
+outranked genuine hot templates in the Top-N, and a single error incremented counts thirty
+times. `cli/StackTraceJoiner` folds a trace into one record before `add()`. It is a
+line-stream transform, so the core never learns that multi-line records exist.
+
+The rule detects **continuations, never record starts**. Start detection (a leading
+timestamp, say) is format-dependent: a log without one would make every line look like a
+continuation and collapse the whole stream into a single template. Continuation detection
+fails in the safe direction instead, because an unrecognised line is simply its own record,
+which is exactly the behaviour we had before.
+
+It needs no configuration because it is Java-specific. `at …(File.java:42)`,
+`Caused by:`, `Suppressed:` and `… N common frames omitted` come from
+`Throwable.printStackTrace` itself, so every framework reproduces them verbatim. Two
+details are easy to get wrong: the frame pattern must **not** be anchored at the end
+(Spring Boot's `%wEx` appends ` ~[classes/:na]` to every frame), and the un-indented
+exception header is genuinely ambiguous, since an application may simply log
+`e.toString()`, so it is held back and joined only once the next line turns out to be a frame.
+
+Extent is capped at one frame after the header (`--trace-frames`). Joining the whole trace
+would defeat the purpose: frame counts differ between occurrences of the same error, so the
+joined lines would differ in token count and land in different level-1 buckets. Head +
+exception + throw site has a fixed token count and always merges.
+
+Cost is five prefix gates per line with the regex behind each one, the same
+cheap-gate-then-regex shape `Masker` uses. Measured overhead on trace-free input is ~1%;
+on trace-heavy input joining is ~3.5× *faster*, because it is one `add()` per trace instead
+of one per frame and the junk frame clusters never accumulate in the `at` overflow leaf.
+`cli/JoinerBenchmark` measures both.
+
+Holding a line back needs a way to learn that no next line is coming, or an idle stream
+would pin the last record forever. Hence `LineSink` (`hasPending`/`onIdle`/`onEnd`) and the
+`reader.ready()` grace flush in `LineSource`, which only ever fires while a line is
+actually held.
 
 ## Terminal handling for `--top`
 

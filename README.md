@@ -7,8 +7,7 @@
 [![Release](https://img.shields.io/github/v/release/kguelseven/distile)](https://github.com/kguelseven/distile/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A from-scratch Java implementation of the
-[Drain](https://ieeexplore.ieee.org/document/8029742) streaming log-template extractor.
+A Java implementation of the [Drain](https://ieeexplore.ieee.org/document/8029742) streaming log-template extractor.
 It runs on your machine, against your terminal, with no agent and no backend to set up.
 Everything stays local and in memory: just the templates and their counts.
 
@@ -160,6 +159,8 @@ distile [FILE] [options]
       --no-emit-new          don't print an event on each new template
       --milestones [set]     emit on count milestones; no value = 1,10,100,…
       --outlier-max <n>      count <= n counts as an outlier      (default 2)
+      --no-join-traces       treat every line of a Java stack trace as its own record
+      --trace-frames <n>     trace lines kept after the exception   (default 1)
       --sim-threshold <0..1> similarity needed to join a cluster  (default 0.5)
       --depth <n>            parse-tree depth                     (default 4)
       --max-children <n>     max node fan-out before <*> overflow (default 100)
@@ -170,6 +171,38 @@ distile [FILE] [options]
 By default two layers emit: a `[NEW]` event when a template first appears, and a Top-N
 snapshot every 5s. On stream end (or Ctrl-C) it prints the full ranked list plus outliers.
 Milestones are off until you go hunting a spike.
+
+### Stack traces
+
+A Java stack trace is one log event spread over dozens of lines. Left alone, every frame
+becomes its own template, and one error bumps counts thirty times so distile folds a
+trace into a single record before clustering:
+
+```
+2026-07-26 10:00:01 ERROR c.e.OrderService : Failed to process order 4711
+java.lang.IllegalStateException: no such order
+	at com.example.OrderService.load(OrderService.java:42) ~[classes/:na]
+	at com.example.OrderService.process(OrderService.java:17) ~[classes/:na]
+	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
+Caused by: java.sql.SQLException: connection reset
+	at com.zaxxer.hikari.Pool.get(Pool.java:120) ~[HikariCP-5.0.1.jar:na]
+	... 43 common frames omitted
+```
+```
+1  #0  <*> <*> ERROR c.e.OrderService : Failed to process order <*> | java.lang.IllegalStateException: no such order | at com.example.OrderService.load(OrderService.java:<*>) ~[classes/:na]
+```
+
+The log line, the exception and the throw site are kept; the rest of the trace is dropped.
+That's deliberate: frame counts vary between occurrences of the same error, so keeping
+them all would split one error into several templates. `--trace-frames <n>` widens or
+narrows it (`0` keeps the exception only), and `--no-join-traces` turns it off entirely.
+
+Detection is Java-specific and needs no configuration: `at …(File.java:42)`,
+`Caused by:`, `Suppressed:` and `… N common frames omitted` are shapes
+`Throwable.printStackTrace` emits and every framework reproduces. Anything else is left
+alone, so an unrecognised line is simply its own record.
+
+### top View
 
 `--top` replaces that scrolling output with the live full-screen view, refreshing every 2s
 by default. A header bar sits above the ranked table showing the clock, running time, lines
@@ -226,6 +259,9 @@ first and a library second.
   fields (`"GET /x HTTP/1.1"`) contain spaces, which destabilises token counts. An
   opt-in atomic-field tokenizer is planned.
 - **Framework prefixes need a deeper tree.** See `--depth` above.
+- **Interleaved stack traces attach to the wrong line.** If two threads write to the same
+  stream mid-trace, a frame lands under the wrong header. Rare — an appender writes one
+  event in one call — and not fixable from a text stream.
 - **Not on Maven Central yet**, so library use means building from source.
 
 ## Design & internals

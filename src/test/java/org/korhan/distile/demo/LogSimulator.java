@@ -145,6 +145,10 @@ public final class LogSimulator {
                 "Generated daily report in " + latency(r) + "ms")));
         t.add(new Template(40, r -> sb("ERROR", execThread(r), LOG_EXCEPTIONS,
                 "Unhandled exception handling request " + uuid(r))));
+        // A real multi-line trace: one template joined (the default), one per frame with
+        // --no-join-traces. The demo exists to show that difference.
+        t.add(new Template(8, r -> sb("ERROR", execThread(r), LOG_ORDERS,
+                "Failed to process order " + orderId(r)) + "\n" + stackTrace(r)));
 
         // --- Rare outliers (surface in distile's outlier view on a bounded --count run) ----------
         t.add(new Template(1, r -> sb("INFO", "main", LOG_TOMCAT,
@@ -155,6 +159,23 @@ public final class LogSimulator {
                 "HikariPool-1 - Connection is not available, request timed out after 30000ms")));
 
         return t;
+    }
+
+    /**
+     * A stack trace as Spring Boot's console appender renders one: tab-indented frames
+     * with the ~[jar:version] suffix %wEx appends, a Caused by chain, an elision. Line
+     * numbers vary per occurrence so masking has something to do.
+     */
+    private static String stackTrace(Random r) {
+        return "java.lang.IllegalStateException: order is not payable\n"
+                + "\tat c.e.demo.OrderService.requirePayable(OrderService.java:" + (40 + r.nextInt(9)) + ") ~[classes/:na]\n"
+                + "\tat c.e.demo.OrderService.process(OrderService.java:" + (70 + r.nextInt(9)) + ") ~[classes/:na]\n"
+                + "\tat c.e.demo.OrderController.create(OrderController.java:" + (30 + r.nextInt(9)) + ") ~[classes/:na]\n"
+                + "\tat java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]\n"
+                + "Caused by: java.sql.SQLTransientConnectionException: HikariPool-1 - Connection is not available\n"
+                + "\tat com.zaxxer.hikari.pool.HikariPool.createTimeoutException(HikariPool.java:"
+                + (690 + r.nextInt(9)) + ") ~[HikariCP-5.0.1.jar:na]\n"
+                + "\t... " + (20 + r.nextInt(40)) + " common frames omitted";
     }
 
     /**
