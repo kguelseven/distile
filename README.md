@@ -37,9 +37,9 @@ often it was seen:
 
 ```
 [SNAPSHOT  2026-07-19T10:02:14.318]  top 10 of 14 templates
- 616  #3  <*> INFO <*> --- [exec-<*>] c.e.demo.OrderController : Created order <*> for customer <*>
- 298  #5  <*> DEBUG <*> --- [exec-<*>] o.s.web.servlet.DispatcherServlet : POST <*> parameters={masked}
- 288  #10  <*> ERROR <*> --- [exec-<*>] c.e.demo.ExceptionHandler : Unhandled exception handling request <*>
+ 616  #3   <*>  INFO <*> --- [exec-<*>] c.e.demo.OrderController          : Created order <*> for customer <*>
+ 298  #5   <*> DEBUG <*> --- [exec-<*>] o.s.web.servlet.DispatcherServlet : POST <*> parameters={masked}
+ 288  #10  <*> ERROR <*> --- [exec-<*>] c.e.demo.ExceptionHandler         : Unhandled exception handling request <*>
 …
 ```
 
@@ -111,12 +111,16 @@ Raw lines look like a real app's console:
 …and distile collapses thousands of them into the handful of patterns actually happening:
 
 ```
-[SNAPSHOT  2026-07-19T10:02:31.512]  top 10 of 14 templates
-    1029  #0  <*> DEBUG <*> --- [http-nio-<*>-exec-<*>] org.hibernate.SQL : select o1_<*>.id,o1_<*>.total,o1_<*>.status from orders o1_<*> where o1_<*>.id=?
-    1019  #2  <*> DEBUG <*> --- [HikariPool-<*>-housekeeper] com.zaxxer.hikari.pool.HikariPool : HikariPool-<*> - Pool stats (total=<*>, active=<*>, idle=<*>, waiting=<*>)
-     616  #3  <*> INFO <*> --- [http-nio-<*>-exec-<*>] c.e.demo.OrderController : Created order <*> for customer <*>
-     298  #5  <*> DEBUG <*> --- [http-nio-<*>-exec-<*>] o.s.web.servlet.DispatcherServlet : POST <*> parameters={masked}
+[SNAPSHOT  2026-07-19T10:02:31.512]  top 10 of 15 templates
+    1984  #2  <*> DEBUG <*> --- [HikariPool-<*>-housekeeper] com.zaxxer.hikari.pool.HikariPool : HikariPool-<*> - Pool stats (total=<*>, active=<*>, idle=<*>, waiting=<*>)
+    1896  #1  <*> DEBUG <*> --- [http-nio-<*>-exec-<*>]      org.hibernate.SQL                 : select o1_<*>.id,o1_<*>.total,o1_<*>.status from orders o1_<*> where o1_<*>.id=?
+    1072  #7  <*>  INFO <*> --- [http-nio-<*>-exec-<*>]      c.e.demo.OrderController          : Created order <*> for customer <*>
+     880  #4  <*>  WARN <*> --- [http-nio-<*>-exec-<*>]      c.e.demo.PaymentService           : Retrying payment gateway attempt <*>/<*>
+     600  #8  <*> DEBUG <*> --- [http-nio-<*>-exec-<*>]      o.s.web.servlet.DispatcherServlet : POST <*> parameters={masked}
 ```
+
+The thread, logger and message land in columns: the logger had already aligned them
+with `%-40.40logger` and `%5p`, and distile puts that back after tokenizing threw it away.
 
 `--depth 9` is there because framework logs prepend a fixed multi-token prefix (timestamp,
 level, PID, thread, logger…) before the real message, and distile groups by leading tokens.
@@ -144,6 +148,12 @@ templates (count ≤ `--outlier-max`). Those are often the interesting ones.
   discovered as a position where lines of the same shape disagreed.
 - `#id` is a stable cluster id. The same template keeps its number for the life of the
   process, so you can follow one across snapshots.
+
+Inside a table, distile squares the record's fields into columns so you can scan down one
+instead of re-reading every line. Nothing to configure: it reads the columns off the rows
+it is about to print, and a format that offers no structure (Go's `log`, nginx access logs,
+JSON lines) prints exactly as it always did rather than guessing. Details in
+[DESIGN.md](docs/DESIGN.md#column-alignment).
 
 ## Options
 

@@ -48,6 +48,9 @@ public final class TopReporter implements Reporter {
     private static final DateTimeFormatter CLOCK =
             DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault());
 
+    // Width of the "  count  #id " chrome every row carries before its template — mirrors row().
+    private static final int ROW_PREFIX_WIDTH = "  12345678  #1234 ".length();
+
     private final long refreshSeconds;
     private final Instant start;
 
@@ -72,6 +75,10 @@ public final class TopReporter implements Reporter {
     private final Map<Long, Long> prevCounts = new HashMap<>();
     // clusterId -> frames since it last changed, driving the fade (0 = just changed).
     private final Map<Long, Integer> fadeAge = new HashMap<>();
+
+    // Column widths persist across frames (they only ever grow), so the table does not shift
+    // sideways when the top-N changes. Only touched from the synchronized emit.
+    private final TemplateColumns columns = new TemplateColumns();
 
     public TopReporter(long refreshSeconds) {
         this.refreshSeconds = refreshSeconds;
@@ -269,14 +276,20 @@ public final class TopReporter implements Reporter {
         // Keep the table within the screen: header bar (2) + blank (1) + column header (1).
         int maxRows = Math.max(0, rows - 4);
         List<LogCluster> top = e.topN();
+        List<LogCluster> visible = top.subList(0, Math.min(top.size(), maxRows));
+        // Align only the rows actually drawn, and budget the grid against the space a template
+        // actually gets — the width left after the count/id chrome. Two thirds of that at most, so
+        // a narrow terminal drops to a cheaper tier instead of pushing the message off screen.
+        int templateArea = Math.max(0, width - ROW_PREFIX_WIDTH);
+        List<String> templates = columns.align(visible, templateArea * 2 / 3);
         Map<Long, Integer> newAges = new HashMap<>();
-        for (int i = 0; i < top.size() && i < maxRows; i++) {
-            LogCluster c = top.get(i);
+        for (int i = 0; i < visible.size(); i++) {
+            LogCluster c = visible.get(i);
             boolean isNew = isNewInView(c.clusterId(), prevCounts);
             // Reset to the fresh flash on entry, otherwise step one frame further into the fade.
             int age = isNew ? 0 : fadeAge.getOrDefault(c.clusterId(), FADE_RAMP.length) + 1;
             newAges.put(c.clusterId(), age);
-            lines.add(row(c, fadeStyle(age), width));
+            lines.add(row(c, templates.get(i), fadeStyle(age), width));
         }
         // Rebuild from the visible rows each frame, so the map stays bounded to the top-N.
         fadeAge.clear();
@@ -284,11 +297,15 @@ public final class TopReporter implements Reporter {
         return lines;
     }
 
-    /** One table row: "count  #id  template", template truncated to the available width. */
-    static AttributedString row(LogCluster c, AttributedStyle style, int width) {
+    /**
+     * One table row: "count  #id  template", template truncated to the available width. The
+     * template arrives already column-aligned (see TemplateColumns), so truncation still cuts the
+     * message tail — the aligned prefix is bounded well inside the width by its own budget.
+     */
+    static AttributedString row(LogCluster c, String template, AttributedStyle style, int width) {
         String prefix = String.format("  %8d  #%-4d ", c.count(), c.clusterId());
         int remaining = Math.max(0, width - prefix.length());
-        String line = prefix + truncate(c.templateString(), remaining);
+        String line = prefix + truncate(template, remaining);
         // Clip as a final guard (e.g. a very narrow terminal where the prefix alone overflows).
         return clip(new AttributedString(line, style), width);
     }

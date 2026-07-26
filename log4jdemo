@@ -24,7 +24,12 @@ fi
 
 # Log4j2 is a 'provided' dependency, so it is in the local Maven repo but not on any built
 # classpath. Resolve the jars for the exact version the project builds against (read from pom).
-LOG4J_VERSION="$(grep -oP '<log4j.version>\K[^<]+' "$DIR/pom.xml")"
+# POSIX sed, not `grep -oP`: -P is a GNU extension and BSD grep on macOS rejects it outright.
+LOG4J_VERSION="$(sed -n 's/.*<log4j\.version>\([^<]*\)<.*/\1/p' "$DIR/pom.xml")"
+if [ -z "$LOG4J_VERSION" ]; then
+  echo "log4jdemo: could not read <log4j.version> from $DIR/pom.xml" >&2
+  exit 1
+fi
 M2="${HOME}/.m2/repository/org/apache/logging/log4j"
 CORE="$M2/log4j-core/$LOG4J_VERSION/log4j-core-$LOG4J_VERSION.jar"
 API="$M2/log4j-api/$LOG4J_VERSION/log4j-api-$LOG4J_VERSION.jar"

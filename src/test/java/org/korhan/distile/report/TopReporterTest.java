@@ -74,7 +74,7 @@ class TopReporterTest {
                 + "where o1_0.id=? and o1_0.status=? order by o1_0.created desc limit ?";
         LogCluster c = new LogCluster(7, List.of(longTemplate.split(" ")));
         for (int width : new int[] {40, 80, 100, 120}) {
-            AttributedString r = TopReporter.row(c, AttributedStyle.DEFAULT, width);
+            AttributedString r = TopReporter.row(c, longTemplate, AttributedStyle.DEFAULT, width);
             assertTrue(r.columnLength() <= width,
                     "row width " + r.columnLength() + " exceeds " + width);
         }

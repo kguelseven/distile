@@ -103,6 +103,57 @@ would pin the last record forever. Hence `LineSink` (`hasPending`/`onIdle`/`onEn
 `reader.ready()` grace flush in `LineSource`, which only ever fires while a line is
 actually held.
 
+## Column alignment
+
+A log line arrives already aligned: `%-40.40logger`, `%5p` and `[%15.15t]` are padding the
+framework applied on the way out. `Tokenizer` splits on whitespace and throws it away, so a
+table of templates prints ragged. `report/TemplateColumns.java` puts the columns back, in the
+reporting layer only.
+
+It takes **no configuration**, and that is the constraint rather than an omission: a knob
+would let someone point it at a format it cannot handle. It decides per table, and where it
+cannot decide reliably the output stays byte identical to what it was before.
+
+Columns are token *positions*, and the tokens are the ones already in the cluster template.
+`Tokenizer` drops empty tokens, so no token holds a space and `split(" ")` inverts
+`templateString()` losslessly. Nothing is parsed again, and the raw line is long gone anyway.
+Alignment only inserts spaces between existing tokens. It never changes, reorders or drops one.
+
+Three tiers, each a strict fallback from the last:
+
+1. **Field grid.** The message boundary is the first token ending in `:` (`systemd[<*>]:`,
+   `kernel:`, a lone `:`), and it has to sit at the **same token index in every row**. That
+   agreement between rows is the reliability test, and what separates this from guessing at a
+   format. Fires on logback, Spring Boot, syslog, journald and the macOS unified log.
+2. **Structural prefix.** With no usable boundary, align the leading positions where every row
+   holds the same literal (which covers a column that is `<*>` throughout), or where every
+   value is a log level. The level list ignores case and spans ecosystems on purpose:
+   `WARNING` is Python, `Default` and `Fault` are macOS, `NOTICE` through `EMERG` are syslog.
+   A level column goes to the right, matching `%5p`.
+3. **Decline.** Print as before.
+
+Tier 2 is safe to leave on always because a column identical in every row is neutral for
+width: padding it inserts nothing, so padding appears only where widths genuinely differ. And
+a format with no leading structure stops the scan at position 0, which does nothing at all.
+
+A bare `-` is deliberately **not** a boundary. It is the one rule that split real input in the
+wrong place: Python's `%(asctime)s - %(name)s - %(levelname)s - %(message)s` puts the message
+after the *third* one, so taking the first separator cuts at the second and strands the level
+inside the message. Dropping it costs that layout nothing it had.
+
+Widths are remembered per reporter and only ever grow, so a `--top` frame does not shift
+sideways when the ranking changes and the tables of one run share a layout. That state is one
+int per column. `--top` budgets the grid against the width a template actually gets, the
+viewport minus the `count  #id` chrome, and claims two thirds of it at most: the full grid at
+150 columns, the level column alone at 100 and 80.
+
+What it does *not* do matters as much. Measured against real masker output for ten formats,
+alignment changes nothing for Go's `log`, both common Python layouts, nginx access logs, one
+JSON object per line, and the log4j2 pattern most projects start from, where `%d [%t] %-5level`
+puts the thread before the level, so tier 2 stops at position 1 and never reaches it. Field
+*order* decides the outcome, not which family the format belongs to. `TemplateColumnsTest`
+pins each of those as byte identical, and those negative tests are the real contract.
+
 ## Terminal handling for `--top`
 
 The live view uses [JLine](https://github.com/jline/jline3) for terminal-width detection and
